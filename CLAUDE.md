@@ -59,3 +59,4 @@
 - [ ] DevOps 역량 시연이라는 본 프로젝트 목적에 부합하는가?
 - [ ] 명령어가 Ubuntu 24.04에서 그대로 동작하는 형태인가?
 - [ ] 16GB RAM 환경에서 실행 가능한 리소스 수준인가?
+- [ ] `docs/requirements.md` 의 모든 항목(B/A 시리즈 33개, 본 프로젝트는 [선] 포함 전부 필수)이 현재 작업/계획에 매핑되어 있는가? `docs/BACKLOG.md` 와 `docs/traceability-matrix.md` 에서 R-ID 역참조를 점검했는가?
