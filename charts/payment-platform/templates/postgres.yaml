@@ -20,6 +20,12 @@
 # 리소스 사이즈 정책 (16GB host 친화):
 #   requests cpu=100m mem=256Mi  / limits cpu=500m mem=512Mi
 #   PVC = 2Gi (kind 기본 storageClass `standard` 사용)
+#
+# 검증 명령:
+#   kubectl -n payment-dev exec postgres-0 -- \
+#     psql -U payment -c "SELECT datname FROM pg_database ORDER BY datname;"
+# 주의: `\l` 은 와이드 포맷이라 `kubectl exec -it` 의 TTY pager 와 만나면
+#       마지막 행이 잘리는 경우가 있으므로 검증에는 위 SELECT 권장.
 
 ---
 # ---------------------------------------------------------------------------
