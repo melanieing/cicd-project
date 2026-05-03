@@ -13,12 +13,12 @@
 
 | ID | 태스크 | R-ID | 산출물 |
 |---|---|---|---|
-| 0.1 | 리포 디렉토리 골격 생성 (`services/`, `charts/`, `argocd/`, `istio/`, `observability/`, `docs/`, `scripts/`, `.github/`) | - | 디렉토리 트리 |
-| 0.2 | `.gitignore`, `.editorconfig`, `LICENSE` 추가 | - | 파일 |
+| 0.1 | 리포 디렉토리 골격 생성 (`services/`, `charts/`, `argocd/`, `istio/`, `observability/`, `docs/`, `scripts/`, `.github/`) ✅ | - | 디렉토리 트리 |
+| 0.2 | `.gitignore`, `.editorconfig`, `LICENSE` 추가 ✅ | - | 파일 |
 | 0.3 | **기술 스택 버전 검증** (kind, k8s, Istio, ArgoCD, Prom stack, Kiali, Jaeger, Trivy, Helm, Python, FastAPI, Postgres, GHA runner — 13종) ✅ | - | `docs/tech-stack-versions.md` |
-| 0.4 | 로컬 도구 설치 가이드 (`docker`, `kind`, `kubectl`, `helm`, `istioctl`, `argocd` CLI) — Ubuntu 24.04 기준 | - | `docs/setup/local-tools.md` |
-| 0.5 | kind 멀티노드 클러스터 부트스트랩 스크립트 | - | `scripts/bootstrap.sh`, `kind-config.yaml` |
-| 0.6 | 네임스페이스 분리 (`payment-dev`, `payment-prod`, `argocd`, `istio-system`, `observability`) | - | `manifests/namespaces.yaml` |
+| 0.4 | 로컬 도구 설치 가이드 (`docker`, `kind`, `kubectl`, `helm`, `istioctl`, `argocd` CLI) — Ubuntu 24.04 기준 ✅ | - | `docs/setup/local-tools.md` |
+| 0.5 | kind 멀티노드 클러스터 부트스트랩 스크립트 ✅ | - | `scripts/bootstrap.sh`, `kind-config.yaml` |
+| 0.6 | 네임스페이스 분리 (`payment-dev`, `payment-prod`, `argocd`, `istio-system`, `observability`) ✅ | - | `manifests/namespaces.yaml` |
 
 ## EPIC 1 — 애플리케이션 서비스 (얇게) (Day 1 오전)
 

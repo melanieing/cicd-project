@@ -1,0 +1,65 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# --- Virtualenv ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- IDE ---
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Secrets / local kube context ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+kubeconfig
+kubeconfig.*
+.kube/
+
+# --- Helm ---
+charts/**/charts/
+charts/**/*.tgz
+.helm/
+
+# --- Terraform (future) ---
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+
+# --- Build artifacts / logs ---
+*.log
+logs/
+tmp/
+.cache/
+
+# --- Node (for any docs/tooling) ---
+node_modules/
