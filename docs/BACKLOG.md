@@ -27,7 +27,7 @@
 | 1.1 | FastAPI 템플릿 1개 작성 (`/health`, `/health/ready` DB ping, 도메인 액션 1개) ✅ | B3-M2 | `services/_template/` |
 | 1.2 | 4개 서비스(`account`, `transfer`, `loan`, `notification`) 템플릿 복제 + 도메인 액션 식별자만 변경 ✅ | - | 각 서비스 디렉토리 |
 | 1.3 | `transfer` → `notification` HTTP 호출 연결 (mesh 토폴로지에서 의미 있는 트래픽) ✅ | A2-M1 | `services/transfer/main.py` |
-| 1.4 | PostgreSQL StatefulSet + DB 4개 (`account_db`, `transfer_db`, `loan_db`, `notification_db`) | B3-M2 | `charts/payment-platform/templates/postgres.yaml` |
+| 1.4 | PostgreSQL StatefulSet + DB 4개 (`account_db`, `transfer_db`, `loan_db`, `notification_db`) ✅ | B3-M2 | `charts/payment-platform/templates/postgres.yaml` |
 | 1.5 | 각 서비스 pytest 단위 테스트 1~2개 (도메인 액션 + 헬스 검증) | B1-M2 | `services/*/tests/` |
 
 ## EPIC 2 — 컨테이너 이미지 (Day 1 오후)
