@@ -1,67 +1,67 @@
-"""서비스 템플릿 - payment-platform 프로젝트의 FastAPI 베이스 애플리케이션.
+"""transfer service - 이체 도메인 + notification 서비스 호출.
 
-이 파일을 복사해서 4개 서비스(account, transfer, loan, notification)를 만든다.
+이 파일은 services/_template/main.py 의 복사본에서 출발하지만,
+**Task 1.3 으로 인해 다음 점에서 달라진다:**
+  1. NOTIFICATION_URL / NOTIFICATION_TIMEOUT 환경변수 추가
+  2. lifespan 에 httpx.AsyncClient 생성·정리 추가 (모듈당 1개 재사용)
+  3. POST /transfer 핸들러가 처리 후 notification 의 /send 를 호출
+  4. ActionResponse 에 notification 필드 추가 (호출 결과 메타데이터)
 
-이 파일이 시스템에서 하는 일:
-  - HTTP 서버 1개를 띄운다 (Uvicorn 위에서 FastAPI 앱)
-  - K8s가 호출할 헬스체크 2종(liveness/readiness)을 노출
-  - 도메인 액션 1개(POST /<DOMAIN_ACTION>)를 mock으로 노출
-  - PostgreSQL 커넥션 풀을 lifespan에 맞춰 생성/정리
+이 호출은 Kiali 토폴로지에서 transfer -> notification 의존성 엣지를 만들고,
+Canary 라우팅·Circuit Breaker 시연의 핵심 트래픽이 된다.
 
-[Python 기초 메모 — 이 파일에 쓰인 문법]
-  - 트리플 쿼트 `\"\"\"...\"\"\"` : docstring (모듈/함수 설명문). help()으로 조회 가능
-  - `from __future__ import annotations` : 타입 힌트를 "문자열로" 평가시켜 forward reference
-    문제(아직 정의 안된 타입을 미리 참조)와 import 비용을 줄인다. Python 3.10+ 권장 패턴.
-  - `async def` : 비동기 함수. 호출하면 즉시 실행되지 않고 코루틴 객체를 반환.
-    `await`로 결과를 기다리거나 이벤트 루프(여기선 Uvicorn)가 스케줄링.
-  - `@데코레이터` : 함수를 감싸는 함수. `@app.get("/x")`는 함수를 라우트에 등록.
-  - `dict[str, Any]` : Python 3.9+ 부터 허용된 제네릭 타입 힌트. (옛 문법: `Dict[str, Any]`)
+[graceful degrade — 의도적 설계]
+notification 호출이 실패해도 transfer 자체는 성공으로 응답한다.
+이는 의도적으로, EPIC 8 의 outlierDetection / Circuit Breaker 시연에서
+"primary 비즈니스 흐름은 끊기지 않으면서 비핵심 의존성만 자동 격리됨"을
+보이기 위함이다.
+
+[Python 기초 메모 — 추가된 문법]
+  - `httpx.AsyncClient` : asyncio 위에서 동작하는 HTTP 클라이언트.
+    내부에 connection pool 을 보유하므로 매 요청마다 새로 만들지 않고
+    lifespan 동안 1개를 재사용한다 (재사용하지 않으면 매 요청 TCP 핸드셰이크 발생).
+  - `dict[str, Any] | None` : "dict 또는 None" union 타입. Pydantic v2 BaseModel
+    필드의 default `= None` 과 결합하면 optional 필드가 된다.
+  - `r.raise_for_status()` : HTTP 응답이 4xx/5xx 면 예외(HTTPStatusError) 발생.
+    명시적으로 호출해야 하며, 호출하지 않으면 응답 객체만 반환되고 에러는 무시됨.
 """
 
-# `__future__` import는 반드시 docstring 직후, 다른 import보다 먼저.
 from __future__ import annotations
 
-# --- 표준 라이브러리 ---
-import logging  # 구조적 로그 출력 (print 대신 사용; 레벨/포맷 일괄 관리)
-import os  # 환경변수 읽기 등 OS 인터페이스
-from contextlib import asynccontextmanager  # async generator를 with 호환 객체로 변환하는 데코레이터
-from typing import Any  # "어떤 타입이든 OK"를 표현하는 타입 힌트
+import logging
+import os
+from contextlib import asynccontextmanager
+from typing import Any
 
-# --- 외부 라이브러리 (requirements.txt 참고) ---
-import asyncpg  # PostgreSQL의 비동기 드라이버 (asyncio 위에서 동작)
-from fastapi import FastAPI, HTTPException, status  # 웹 프레임워크 + HTTP 상태 코드 enum
-from pydantic import BaseModel  # 요청/응답 모델 자동 검증 + 직렬화
+import asyncpg
+import httpx  # 비동기 HTTP 클라이언트 (Task 1.3 추가)
+from fastapi import FastAPI, HTTPException, status
+from pydantic import BaseModel
 
 
 # ---------------------------------------------------------------------------
 # 환경변수 로드
-# 컨테이너로 배포될 때는 K8s ConfigMap/Secret이 환경변수로 주입된다.
-# 로컬 실행 시에는 .env 파일에서 export하거나 직접 export 명령으로 설정.
 # ---------------------------------------------------------------------------
 
-# os.getenv("이름", "기본값") - 환경변수가 비어있으면 두 번째 인자가 기본값.
-# 타입 힌트(`: str`)는 mypy/pyright 같은 정적 분석 도구에 의도를 알리는 용도.
-# 런타임에서 강제되지 않는다 (Python은 동적 타입 언어).
-SERVICE_NAME: str = os.getenv("SERVICE_NAME", "template")
-
-# Postgres 접속 문자열. 형식: postgresql://user:password@host:port/dbname
-# 빈 문자열이면 DB 풀 초기화를 스킵하고 readiness probe가 503을 반환한다.
+SERVICE_NAME: str = os.getenv("SERVICE_NAME", "transfer")
 DATABASE_URL: str = os.getenv("DATABASE_URL", "")
-
-# 도메인 액션의 엔드포인트 경로명. 예: "transfer" → POST /transfer 노출.
-DOMAIN_ACTION: str = os.getenv("DOMAIN_ACTION", "process")
-
-# 환경변수는 항상 문자열로 들어오므로 int()로 명시 변환이 필요.
-# pod 1개당 최소/최대 커넥션 수. HPA로 pod 수가 늘면 풀도 함께 확장된다.
+DOMAIN_ACTION: str = os.getenv("DOMAIN_ACTION", "transfer")
 DB_POOL_MIN: int = int(os.getenv("DB_POOL_MIN", "1"))
 DB_POOL_MAX: int = int(os.getenv("DB_POOL_MAX", "5"))
 
+# 알림 서비스의 HTTP base URL.
+# 빈 문자열이면 알림 호출을 스킵 (graceful skip — 로컬에서 transfer 단독 테스트 가능).
+# K8s 환경 예: http://notification.payment-dev.svc.cluster.local:8000
+NOTIFICATION_URL: str = os.getenv("NOTIFICATION_URL", "")
+
+# 알림 호출 타임아웃(초).
+# 너무 길면 transfer 응답이 느려져 사용자 경험 악화,
+# 너무 짧으면 정상 호출도 실패. mesh 환경 일반값인 2초로 설정.
+NOTIFICATION_TIMEOUT: float = float(os.getenv("NOTIFICATION_TIMEOUT", "2.0"))
+
 
 # ---------------------------------------------------------------------------
-# 로깅 설정
-# basicConfig는 루트 로거 1회 설정. 이후 logging.getLogger(name)으로 자식 로거를 받는다.
-# - level: DEBUG/INFO/WARNING/ERROR/CRITICAL 중 임계 레벨 (이 레벨 이상만 출력)
-# - format: 시간 + 레벨 + 로거 이름 + 메시지
+# 로깅
 # ---------------------------------------------------------------------------
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -72,94 +72,69 @@ log = logging.getLogger(SERVICE_NAME)
 
 # ---------------------------------------------------------------------------
 # 애플리케이션 상태
-# 전역 dict 1개에 long-lived 자원(DB 풀 등)을 모아둔다.
-# 모듈 레벨 변수에 직접 할당하면 import 순서/순환 참조 문제가 있어
-# dict 패턴이 fastapi 커뮤니티에서 흔히 쓰인다.
+# DB pool + HTTP client 두 개의 long-lived 자원을 보관.
 # ---------------------------------------------------------------------------
-state: dict[str, Any] = {"db_pool": None}
+state: dict[str, Any] = {"db_pool": None, "http_client": None}
 
 
 # ---------------------------------------------------------------------------
-# Lifespan 핸들러
-# FastAPI 앱이 기동/종료될 때 실행되는 코드.
-#   - yield 이전(startup): DB 풀 생성, 외부 서비스 connect 등
-#   - yield 자체: 앱이 요청을 받기 시작
-#   - yield 이후(shutdown): 자원 정리
-#
-# `@asynccontextmanager` 데코레이터가 async generator function을
-# `async with` 호환 context manager로 변환한다. FastAPI가 내부적으로
-# `async with lifespan(app):` 형태로 호출.
+# Lifespan
+#   - startup : DB 풀 + HTTP 클라이언트 생성
+#   - shutdown: HTTP 클라이언트 close, DB 풀 close (생성 역순)
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # === startup ===
     if DATABASE_URL:
         log.info("Initializing DB pool: min=%d max=%d", DB_POOL_MIN, DB_POOL_MAX)
-        # `await`는 코루틴이 끝날 때까지 현재 함수의 실행을 일시 중단.
-        # 그 동안 다른 코루틴이 이벤트 루프 위에서 실행될 수 있다.
         state["db_pool"] = await asyncpg.create_pool(
             DATABASE_URL, min_size=DB_POOL_MIN, max_size=DB_POOL_MAX
         )
     else:
         log.warning("DATABASE_URL is empty - readiness probe will fail")
 
-    yield  # ← 이 시점에 FastAPI가 요청 받기 시작
+    # httpx.AsyncClient 는 connection pool 을 내부 보유하므로
+    # 모듈 시작 시 1번 생성해서 lifespan 내내 재사용.
+    state["http_client"] = httpx.AsyncClient(timeout=NOTIFICATION_TIMEOUT)
+    log.info("HTTP client initialized (timeout=%.1fs)", NOTIFICATION_TIMEOUT)
+
+    yield  # ← 요청 받기 시작
 
     # === shutdown ===
+    client = state["http_client"]
+    if client is not None:
+        await client.aclose()
+        log.info("HTTP client closed")
     pool = state["db_pool"]
     if pool is not None:
         log.info("Closing DB pool")
         await pool.close()
 
 
-# FastAPI 인스턴스 생성. lifespan 인자로 위 함수를 전달하면
-# 시작/종료 hook이 자동으로 연결된다.
 app = FastAPI(title=f"{SERVICE_NAME}-service", lifespan=lifespan)
 
 
 # ---------------------------------------------------------------------------
-# Liveness probe — GET /health
-#
-# K8s가 컨테이너의 프로세스가 살아있는지 주기적으로 확인.
-# DB 같은 외부 의존성을 체크하면 안 된다. 외부 장애 시 pod가 무한 재시작될 수 있음.
-# 200을 반환하면 "프로세스 OK", 실패(연결 거부 등)는 K8s가 컨테이너 재시작.
-#
-# `@app.get("/health")` : 데코레이터가 이 함수를 GET /health 라우트로 등록.
-# `-> dict[str, str]` : 반환 타입 힌트. FastAPI가 이를 보고 OpenAPI 스키마 생성.
+# Liveness / Readiness
+# (template 과 동일. 변경 시 양쪽 모두 일관 유지)
 # ---------------------------------------------------------------------------
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": SERVICE_NAME}
 
 
-# ---------------------------------------------------------------------------
-# Readiness probe — GET /health/ready
-#
-# K8s가 트래픽을 보내기 전에 "이 pod이 요청 처리 준비됐냐"를 확인.
-# DB가 죽으면 503을 반환해서 트래픽 차단 → Service의 endpoints에서 자동 제외.
-# Liveness와 다르게 외부 의존성 체크가 정당하다 (트래픽 분리가 목적이므로).
-# ---------------------------------------------------------------------------
 @app.get("/health/ready")
 async def readiness() -> dict[str, str]:
     pool = state["db_pool"]
     if pool is None:
-        # 503 Service Unavailable. K8s는 503을 받으면 트래픽을 보내지 않는다.
-        # `raise`는 예외를 발생시키는 키워드. FastAPI는 HTTPException을 잡아
-        # 자동으로 해당 status_code의 HTTP 응답을 만들어 반환한다.
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="DB pool not initialized",
         )
     try:
-        # `async with` = 비동기 context manager.
-        # 풀에서 커넥션 1개를 빌리고, with 블록을 나가면 자동 반환.
         async with pool.acquire() as conn:
-            # `SELECT 1`은 connectivity 확인용 가장 가벼운 쿼리.
-            # fetchval은 단일 스칼라 값을 반환.
             await conn.fetchval("SELECT 1")
     except Exception as exc:
-        # 광범위 except는 일반적으로 안티패턴이지만,
-        # readiness probe는 "어떤 이유로든 DB가 안 되면 503"이라는 의도라 정당.
         log.error("Readiness check failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -169,16 +144,10 @@ async def readiness() -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# 도메인 액션 (mock) — POST /<DOMAIN_ACTION>
-#
-# Pydantic BaseModel을 상속한 클래스는 자동으로:
-#   - 요청 JSON을 클래스 인스턴스로 검증/변환 (잘못된 타입이면 422 응답 자동 생성)
-#   - 응답 인스턴스를 자동 직렬화하여 JSON으로 변환
-#   - OpenAPI(/docs) 스키마 자동 생성
+# 요청/응답 모델
+# transfer 전용으로 ActionResponse 에 notification 필드 추가.
 # ---------------------------------------------------------------------------
 class ActionRequest(BaseModel):
-    # 클라이언트가 어떤 키든 자유롭게 보낼 수 있도록 dict 형태로 받는다.
-    # 실제 도메인 로직이 들어가면 구체 필드(amount, account_id 등)로 교체.
     payload: dict[str, Any]
 
 
@@ -187,17 +156,65 @@ class ActionResponse(BaseModel):
     action: str
     status: str
     received: dict[str, Any]
+    # transfer 전용: notification 호출 결과 메타데이터.
+    # NOTIFICATION_URL 미설정 -> status="skipped"
+    # HTTP 200 응답   -> status="delivered" + http_status + response
+    # 실패            -> status="failed"    + error 문자열
+    notification: dict[str, Any] | None = None
 
 
-# f-string `f"/{DOMAIN_ACTION}"`은 환경변수 값을 경로에 삽입.
-# 예: DOMAIN_ACTION=transfer → POST /transfer 라우트가 등록된다.
-# response_model을 지정하면 FastAPI가 응답을 그 모델로 검증/필터링한다.
+# ---------------------------------------------------------------------------
+# notification 서비스 호출 헬퍼
+# 어떤 예외가 발생해도 raise 하지 않고 메타데이터 dict 로 변환해 반환한다
+# (graceful degrade — transfer 응답을 깨뜨리지 않기 위함).
+# ---------------------------------------------------------------------------
+async def call_notification(payload: dict[str, Any]) -> dict[str, Any]:
+    client: httpx.AsyncClient | None = state["http_client"]
+    if not NOTIFICATION_URL or client is None:
+        return {"status": "skipped", "reason": "NOTIFICATION_URL not configured"}
+
+    # 알림 서비스의 ActionRequest 스키마에 맞춰 payload 를 감싼다.
+    # 실제 시스템에서는 채널/수신자/본문을 도메인 규칙에 따라 정교하게 구성.
+    notif_payload = {
+        "payload": {
+            "channel": "system",
+            "to": str(payload.get("to", "unknown")),
+            "body": f"transfer-completed payload={payload}",
+        }
+    }
+    try:
+        r = await client.post(f"{NOTIFICATION_URL}/send", json=notif_payload)
+        r.raise_for_status()  # 4xx/5xx 시 HTTPStatusError
+        return {
+            "status": "delivered",
+            "http_status": r.status_code,
+            "response": r.json(),
+        }
+    except httpx.HTTPError as exc:
+        # httpx.HTTPError 는 timeout/connect-error/4xx/5xx 등 httpx 예외의 베이스 클래스.
+        log.error("Notification call failed: %s", exc)
+        return {"status": "failed", "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# 도메인 액션 — POST /transfer
+# 1) (mock) 이체 처리 — 실제 시스템에서는 DB transaction 으로 출금/입금 처리
+# 2) notification 호출 (graceful degrade)
+# 3) 응답에 notification 메타데이터 포함
+# ---------------------------------------------------------------------------
 @app.post(f"/{DOMAIN_ACTION}", response_model=ActionResponse)
 async def domain_action(req: ActionRequest) -> ActionResponse:
     log.info("Action %s received: %s", DOMAIN_ACTION, req.payload)
+
+    # mock 이체 처리 자리. 실제 비즈니스 로직은 의도적으로 비워둠 (포트폴리오 정책).
+
+    # 알림 호출 — 실패해도 transfer 응답은 정상 발급.
+    notification_meta = await call_notification(req.payload)
+
     return ActionResponse(
         service=SERVICE_NAME,
         action=DOMAIN_ACTION,
         status="accepted",
         received=req.payload,
+        notification=notification_meta,
     )
