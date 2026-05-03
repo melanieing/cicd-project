@@ -34,8 +34,8 @@
 
 | ID | 태스크 | R-ID | 산출물 |
 |---|---|---|---|
-| 2.1 | 멀티스테이지 Dockerfile (builder/runtime 분리, 비루트 `appuser` UID 1001) | B2-M1 | `services/*/Dockerfile` |
-| 2.2 | `.dockerignore` | - | 파일 |
+| 2.1 | 멀티스테이지 Dockerfile (builder/runtime 분리, 비루트 `appuser` UID 1001) ✅ | B2-M1 | `services/*/Dockerfile` |
+| 2.2 | `.dockerignore` ✅ | - | `services/*/.dockerignore` |
 | 2.3 | GHCR 레지스트리 4개 분리 + 이미지 명명 규칙 (`ghcr.io/<owner>/<service>:<git-sha>`) | B2-M2 | `docs/registry.md` |
 | 2.4 | GHCR untagged 이미지 보존 정책 (자동 삭제) + 적용 전후 캡처 | B2-O2 | `docs/registry.md`, 스크린샷 |
 | 2.5 | Dependabot 베이스이미지 주간 PR 설정 + 첫 PR 캡처 | B2-O3 | `.github/dependabot.yml`, 스크린샷 |
