@@ -1,3 +1,15 @@
+# 본 매니페스트는 클러스터 부트스트랩 시 적용되는 5개 네임스페이스를 정의한다.
+# scripts/bootstrap.sh 가 `kubectl apply -f manifests/namespaces.yaml`로 적용한다.
+#
+# YAML 파일에서 `---`은 문서 구분자. 한 파일에 여러 K8s 리소스를 나열할 때 사용.
+#
+# 라벨 규약:
+#   - name=<ns>          : 네임스페이스명 자체를 라벨로 노출 (NetworkPolicy의 selector에서 활용)
+#   - env=<dev|prod>     : 환경 구분 라벨 (애플리케이션 네임스페이스에만)
+#   - istio-injection=enabled : Istio가 사이드카(envoy 컨테이너)를 pod 생성 시 자동 주입.
+#                                활성화되면 mTLS, 트래픽 라우팅, 텔레메트리가 자동으로 동작.
+#                                istio-system, observability 같은 인프라 네임스페이스에는
+#                                의도적으로 주입하지 않는다 (Istio 자체나 Prom/Grafana는 mesh 밖).
 ---
 apiVersion: v1
 kind: Namespace
@@ -17,6 +29,8 @@ metadata:
     env: prod
     istio-injection: enabled
 ---
+# ArgoCD 컨트롤러와 UI가 이 네임스페이스에 배포된다 (Task 5.1).
+# 자체적으로 mTLS·텔레메트리가 필요 없으므로 사이드카 주입은 하지 않는다.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -24,6 +38,8 @@ metadata:
   labels:
     name: argocd
 ---
+# Istio 컨트롤 플레인(istiod)과 Ingress Gateway가 배포된다.
+# 사이드카 주입을 켜면 Istio 자체에 사이드카가 붙어 무한 재귀 같은 문제가 생기므로 끈다.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -31,6 +47,8 @@ metadata:
   labels:
     name: istio-system
 ---
+# Prometheus, Grafana, Kiali, Jaeger 등 관측 스택이 배포된다 (EPIC 7).
+# 모니터링 도구 자체는 mesh 트래픽의 관찰 대상이지 mesh 내부 구성원이 아니므로 주입 X.
 apiVersion: v1
 kind: Namespace
 metadata:

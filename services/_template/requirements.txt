@@ -1,10 +1,40 @@
-# Pinned per docs/tech-stack-versions.md
+# 본 서비스가 의존하는 Python 패키지 목록.
+# `pip install -r requirements.txt`로 설치된다. CI에서도 동일 파일을 사용해
+# 모든 환경의 의존성을 동일하게 핀 고정한다.
+#
+# 버전 핀 정책:
+#   - "==X.Y.Z" : 정확히 그 버전. 메이저 출시 검증된 라이브러리에 사용.
+#   - ">=X,<Y" : minor 영역에서 패치만 자동 픽업 (보안 패치 자동 반영용).
+# 핀 근거: docs/tech-stack-versions.md
+
+# --- 런타임 의존성 ---
+
+# 웹 프레임워크. async 지원 + Pydantic 자동 검증 + OpenAPI(/docs) 자동 생성.
+# 본 프로젝트에서 모든 서비스의 베이스.
 fastapi==0.136.1
+
+# ASGI 서버. fastapi는 framework, uvicorn이 실제 HTTP 서버 역할.
+# `[standard]` 옵션은 uvloop, httptools 등 성능 향상 의존성을 함께 설치.
+# (uvloop은 asyncio의 기본 이벤트 루프를 더 빠른 C 구현으로 교체)
 uvicorn[standard]>=0.34,<0.35
+
+# PostgreSQL 비동기 드라이버. 동기 드라이버(psycopg2)와 달리 asyncio 위에서 동작.
+# fastapi/uvicorn 같은 async 스택과 자연스럽게 결합되어 동시성이 크다.
 asyncpg>=0.30,<0.31
+
+# 데이터 검증·직렬화 라이브러리. FastAPI가 내부적으로 사용.
+# v2부터 검증 코어가 Rust로 재작성되어 v1 대비 5~50배 빠르다.
 pydantic>=2,<3
 
-# Dev / test (used by services/*/tests/)
+# --- 개발/테스트 의존성 (services/*/tests/ 에서 사용) ---
+
+# 테스트 러너. assert 기반의 간결한 문법이 특징.
+# 본 프로젝트는 Task 1.5에서 각 서비스마다 1~2개의 단위 테스트를 추가한다.
 pytest>=8,<9
+
+# pytest에서 async 함수(`async def test_...`)를 테스트할 때 필요한 플러그인.
 pytest-asyncio>=0.24,<0.25
+
+# 비동기 HTTP 클라이언트. fastapi의 TestClient가 내부적으로 사용.
+# 추가로 transfer → notification 같은 서비스 간 호출(Task 1.3)에도 사용 예정.
 httpx>=0.28,<0.29
