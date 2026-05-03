@@ -20,6 +20,12 @@
 # 리소스 사이즈 정책 (16GB host 친화):
 #   requests cpu=100m mem=256Mi  / limits cpu=500m mem=512Mi
 #   PVC = 2Gi (kind 기본 storageClass `standard` 사용)
+#
+# 검증 명령:
+#   kubectl -n payment-dev exec postgres-0 -- \
+#     psql -U payment -c "SELECT datname FROM pg_database ORDER BY datname;"
+# 주의: `\l` 은 와이드 포맷이라 `kubectl exec -it` 의 TTY pager 와 만나면
+#       마지막 행이 잘리는 경우가 있으므로 검증에는 위 SELECT 권장.
 
 ---
 # ---------------------------------------------------------------------------
@@ -48,6 +54,16 @@ stringData:
 # 공식 postgres 이미지의 entrypoint 는 첫 기동 시
 # /docker-entrypoint-initdb.d 안의 *.sql / *.sh 파일을 자동 실행한다.
 # 이를 이용해 4개 DB 를 한 번에 생성.
+#
+# [멱등성]
+# 단순 `CREATE DATABASE` 4줄 방식은 첫 init 도중 transient 오류 1건이
+# 끼어들면 일부 DB 만 생성되는 사고가 발생할 수 있다. 본 프로젝트의
+# 실제 초기화에서 transfer_db 만 누락되는 사례를 한 차례 관찰했음.
+#
+# 따라서 psql 의 `\gexec` 메타 명령으로 "존재하지 않을 때만 CREATE" 형태로
+# 작성해 어떤 시점에 재실행해도 결과가 동일하도록 보장한다:
+#   - SELECT 가 누락된 DB 명만 골라 'CREATE DATABASE x' 텍스트를 만들고
+#   - \gexec 가 그 텍스트들을 차례로 실행
 # ---------------------------------------------------------------------------
 apiVersion: v1
 kind: ConfigMap
@@ -56,12 +72,19 @@ metadata:
   namespace: payment-dev
 data:
   init.sql: |
-    -- 각 서비스 전용 DB 4개 생성. 소유자는 POSTGRES_USER (payment).
-    -- 모두 UTF-8 / en_US.UTF-8 로케일 사용.
-    CREATE DATABASE account_db;
-    CREATE DATABASE transfer_db;
-    CREATE DATABASE loan_db;
-    CREATE DATABASE notification_db;
+    -- 4개 서비스 전용 DB. 이미 존재하면 SELECT 결과가 0행이라 \gexec 가 아무것도 하지 않음.
+    -- format(%I) 는 식별자 안전 인용 (SQL injection 방지 + 예약어 충돌 회피).
+    SELECT format('CREATE DATABASE %I', d)
+    FROM (VALUES
+        ('account_db'),
+        ('transfer_db'),
+        ('loan_db'),
+        ('notification_db')
+    ) AS t(d)
+    WHERE NOT EXISTS (
+        SELECT 1 FROM pg_database WHERE datname = d
+    )
+    \gexec
 
 ---
 # ---------------------------------------------------------------------------
