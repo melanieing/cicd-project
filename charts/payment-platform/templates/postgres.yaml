@@ -1,0 +1,240 @@
+# charts/payment-platform/templates/postgres.yaml
+#
+# 본 파일은 4개 서비스(account/transfer/loan/notification)가 공유하는
+# 단일 PostgreSQL 인스턴스를 정의한다. 각 서비스는 자기 소유의 DB
+# (account_db / transfer_db / loan_db / notification_db) 를 사용한다.
+#
+# 적용 방법:
+#   - 현재 (Task 1.4): plain manifest 로 직접 적용
+#       kubectl apply -f charts/payment-platform/templates/postgres.yaml
+#   - 추후 (Task 4.1, 4.2): Helm chart 로 흡수.
+#       이때 namespace 를 metadata 에서 제거하고 `helm install -n payment-dev` 로 주입.
+#
+# 구성 리소스 (5개, 위에서 아래 순서로 적용 가능):
+#   1) Secret           : DB 사용자 비밀번호
+#   2) ConfigMap        : 4 DB 자동 생성용 init.sql
+#   3) Service(headless): StatefulSet 의 stable network identity (DNS) 용
+#   4) Service(ClusterIP): 클라이언트(서비스) 가 사용하는 일반 서비스
+#   5) StatefulSet      : Postgres pod + PVC
+#
+# 리소스 사이즈 정책 (16GB host 친화):
+#   requests cpu=100m mem=256Mi  / limits cpu=500m mem=512Mi
+#   PVC = 2Gi (kind 기본 storageClass `standard` 사용)
+
+---
+# ---------------------------------------------------------------------------
+# 1) Secret — DB 사용자 / 비밀번호
+#
+# 포트폴리오 데모용으로 평문 password 를 stringData 에 넣었다.
+# 실제 운영에서는 ExternalSecrets / Sealed Secrets / Vault 등으로 주입한다
+# (이 부분은 README / ADR 에서 별도 설명 예정).
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: payment-dev
+type: Opaque
+# stringData 는 입력 시 평문, 저장 시 K8s 가 base64 로 자동 인코딩.
+# (반대로 data 필드에 넣으려면 사용자가 직접 base64 인코딩해야 함)
+stringData:
+  POSTGRES_USER: payment
+  POSTGRES_PASSWORD: payment-dev-pw
+
+---
+# ---------------------------------------------------------------------------
+# 2) ConfigMap — postgres init 스크립트
+#
+# 공식 postgres 이미지의 entrypoint 는 첫 기동 시
+# /docker-entrypoint-initdb.d 안의 *.sql / *.sh 파일을 자동 실행한다.
+# 이를 이용해 4개 DB 를 한 번에 생성.
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: payment-dev
+data:
+  init.sql: |
+    -- 각 서비스 전용 DB 4개 생성. 소유자는 POSTGRES_USER (payment).
+    -- 모두 UTF-8 / en_US.UTF-8 로케일 사용.
+    CREATE DATABASE account_db;
+    CREATE DATABASE transfer_db;
+    CREATE DATABASE loan_db;
+    CREATE DATABASE notification_db;
+
+---
+# ---------------------------------------------------------------------------
+# 3) Headless Service — StatefulSet 의 stable DNS
+#
+# clusterIP: None 으로 두면 DNS 가 pod 별로 안정적인 이름을 부여한다:
+#   postgres-0.postgres-headless.payment-dev.svc.cluster.local
+# StatefulSet 의 serviceName 으로 반드시 이 headless 서비스를 지정해야
+# pod 재시작 후에도 동일 이름이 유지되어 클라이언트가 재연결 가능.
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-headless
+  namespace: payment-dev
+  labels:
+    app: postgres
+spec:
+  clusterIP: None  # ← headless 서비스 만드는 핵심 키
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+
+---
+# ---------------------------------------------------------------------------
+# 4) ClusterIP Service — 클라이언트가 사용하는 일반 서비스
+#
+# 4개 서비스(account/transfer/loan/notification)는 DATABASE_URL 의 host 부분에
+#   postgres.payment-dev.svc.cluster.local
+# 를 적어 이 Service 를 통해 접속한다. K8s 의 Service mesh 라우팅과
+# load balancing(추후 read-replica 추가 시) 의 진입점이 된다.
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: payment-dev
+  labels:
+    app: postgres
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+
+---
+# ---------------------------------------------------------------------------
+# 5) StatefulSet — Postgres pod
+#
+# Deployment 가 아닌 StatefulSet 을 쓰는 이유:
+#   - pod 별 stable network identity (postgres-0, postgres-1...)
+#   - PVC 가 pod 와 1:1 로 묶여 재시작 후에도 동일 데이터 볼륨을 다시 마운트
+#   - 순서 있는 기동/종료 (replica 늘릴 때 중요)
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: payment-dev
+  labels:
+    app: postgres
+spec:
+  # 본 데모는 single instance. 운영에서는 Patroni/CloudNative-PG 등으로 HA 구성.
+  replicas: 1
+  serviceName: postgres-headless
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+      annotations:
+        # Istio 사이드카 race condition 회피.
+        # StatefulSet 의 첫 pod 이 envoy 가 준비되기 전에 외부와 통신하려다
+        # 실패하는 흔한 시나리오를 막기 위해 envoy 가 ready 될 때까지
+        # 메인 컨테이너 시작을 보류한다.
+        proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
+    spec:
+      # ----------------------------------------------------------------
+      # Pod 보안 컨텍스트
+      # postgres:17.9-alpine 이미지의 postgres 사용자는 uid/gid 70.
+      # fsGroup 을 같은 값으로 두면 K8s 가 마운트된 PVC 에 group ownership 을
+      # 적용해 postgres 프로세스가 PGDATA 디렉토리에 쓸 수 있다.
+      # (kind 기본 storageClass 는 root 소유로 마운트되므로 이 설정이 필요)
+      # ----------------------------------------------------------------
+      securityContext:
+        fsGroup: 70
+      containers:
+        - name: postgres
+          image: postgres:17.9-alpine  # 핀 근거: docs/tech-stack-versions.md
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          # --------------------------------------------------------------
+          # 환경변수
+          # POSTGRES_USER / POSTGRES_PASSWORD 는 Secret 에서 주입.
+          # POSTGRES_DB 는 기본 DB 명. 우리는 init.sql 로 4개 DB 를 따로 만드므로
+          # 의도적으로 비워두면 postgres 는 빈 DB 만 만들고 init.sql 을 실행.
+          # PGDATA 를 서브디렉토리로 지정하는 이유: 마운트 포인트(/var/lib/postgresql/data)
+          # 자체에 lost+found 등이 생기는 클라우드 디스크 환경 호환성을 위함.
+          # --------------------------------------------------------------
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          # --------------------------------------------------------------
+          # Probes
+          # pg_isready 는 postgres 가 클라이언트 연결을 받을 준비가 됐는지 확인.
+          # readinessProbe : 빠르게(5s 간격) 체크. 실패 시 트래픽 차단.
+          # livenessProbe  : 느리게(10s) 체크 + 늦게(30s) 시작.
+          #                  너무 빠르면 pod이 startup 중에 kill 될 수 있음.
+          # --------------------------------------------------------------
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "payment", "-h", "127.0.0.1"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "payment", "-h", "127.0.0.1"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            # PVC — DB 데이터 영구 저장
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            # init.sql 마운트 — 첫 startup 시 1번만 실행
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: init
+          configMap:
+            name: postgres-init
+  # ----------------------------------------------------------------
+  # volumeClaimTemplates
+  # StatefulSet 만의 특수 필드. pod 가 늘 때마다 이 템플릿으로 PVC 가 자동 생성됨.
+  # 본 데모는 replica=1 이라 PVC 1개만 생성된다 (data-postgres-0).
+  # ----------------------------------------------------------------
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # storageClassName 미지정 -> 클러스터 기본값 사용 (kind 의 'standard').
+        resources:
+          requests:
+            storage: 2Gi
