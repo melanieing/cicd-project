@@ -1,0 +1,10 @@
+# Pinned per docs/tech-stack-versions.md
+fastapi==0.136.1
+uvicorn[standard]>=0.34,<0.35
+asyncpg>=0.30,<0.31
+pydantic>=2,<3
+
+# Dev / test (used by services/*/tests/)
+pytest>=8,<9
+pytest-asyncio>=0.24,<0.25
+httpx>=0.28,<0.29
