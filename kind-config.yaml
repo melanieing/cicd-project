@@ -1,0 +1,58 @@
+---
+# kind cluster config for payment-platform project
+# Reference: docs/tech-stack-versions.md
+#   - kind v0.27.0
+#   - Kubernetes node image: kindest/node:v1.33.0
+#
+# Topology: 1 control-plane + 2 workers
+# Memory budget on a 16GB host:
+#   - kind nodes        : ~1-2GB each   -> ~5GB total
+#   - Istio (demo)      : ~1.5GB
+#   - kube-prom-stack   : ~2GB
+#   - 4 services + DB   : ~1GB
+#   - Headroom for OS   : ~5GB+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: payment
+
+# extraPortMappings on control-plane lets us reach Istio Ingress Gateway / ArgoCD / Kiali
+# from the host browser via http://localhost:<port>
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.33.0
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+      # ArgoCD UI (NodePort fallback)
+      - containerPort: 30080
+        hostPort: 30080
+        protocol: TCP
+      # Kiali (NodePort fallback)
+      - containerPort: 30081
+        hostPort: 30081
+        protocol: TCP
+      # Grafana (NodePort fallback)
+      - containerPort: 30082
+        hostPort: 30082
+        protocol: TCP
+  - role: worker
+    image: kindest/node:v1.33.0
+  - role: worker
+    image: kindest/node:v1.33.0
+
+# Networking: default kind CNI (kindnet) is sufficient for NetworkPolicy with
+# kube-proxy. If we later need stricter NetworkPolicy enforcement we can swap to Calico.
+networking:
+  disableDefaultCNI: false
+  podSubnet: "10.244.0.0/16"
+  serviceSubnet: "10.96.0.0/16"
