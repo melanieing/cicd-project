@@ -303,6 +303,7 @@ EPIC 2 이후의 배포·관측·카오스 단계는 [`docs/BACKLOG.md`](docs/BA
 | [`docs/adr/`](docs/adr/) | ADR 3종 (CI 도구 / 레지스트리 / 메시) — 작성 예정 |
 | [`docs/runbook/`](docs/runbook/) | 롤백 등 운영 Runbook — 작성 예정 |
 | [`docs/analysis/`](docs/analysis/) | 병목 분석 리포트 — 작성 예정 |
+| [`docs/troubleshooting/`](docs/troubleshooting/) | 운영 중 마주친 이슈와 해결 과정의 postmortem-lite 기록 |
 | [`CLAUDE.md`](CLAUDE.md) | AI 보조(Claude Code) 작업 시 준수할 지침 |
 
 ---
