@@ -28,6 +28,22 @@
   - 검색 없이 학습 데이터만으로 버전을 단정하지 않는다
   - 버전을 명시할 때는 "2026년 X월 기준 최신 stable: vX.Y.Z" 형식으로 근거를 함께 제시한다
 
+### A-3. 코드/파일 주석 작성 규칙 (학습용)
+- 사용자는 **Python에 익숙하지 않다**. 따라서 모든 새 파일·소스코드에 **학습용 설명 주석**을 충분히 단다.
+- 단계별 적용:
+  - **파일 상단**: 파일 목적·역할·이 파일이 시스템에서 차지하는 위치 (Python은 docstring `"""..."""`, YAML/Shell은 `#` 블록)
+  - **함수/클래스**: 무엇을 하는지, 왜 필요한지, 인자·반환값 의미. 비자명한 부작용 명시
+  - **언어 특유 문법이 등장하는 줄**: 그 문법이 무엇을 의미하는지 한 줄 주석
+    - Python: `async`/`await`, `@데코레이터`, `with`/`async with`, type hint, f-string, list/dict comprehension, `*args`/`**kwargs`, generator/`yield`, dataclass/Pydantic BaseModel 상속, `__future__` import 등
+    - YAML: 비자명한 필드(예: Istio `injectionTemplate`, K8s `securityContext.fsGroup`, Helm template 함수 `{{ include ... }}` 등)
+    - Bash: `set -euo pipefail`, `${VAR:-default}`, heredoc, trap 등
+  - **환경변수·매직 넘버**: 의미·기본값·왜 그 값인지
+  - **자명한 줄**(`import os`, 단순 변수 할당 등): 주석 불필요
+- YAML/JSON 매니페스트는 각 주요 필드 앞에 한두 줄로 "이 필드는 무엇을 의미하고 왜 이 값인지" 명시
+- 주석은 **한국어**로 작성 (사용자 모국어). 단, 코드 식별자·기술 용어는 영문 그대로
+- 주석이 코드보다 길어도 OK. 가독성·이해도 우선
+- 기존 파일 수정 시에도 새로 추가한 부분은 동일 규칙 적용. 기존 무주석 영역도 가능하면 보강
+
 ---
 
 ## B. 프로젝트 컨텍스트
@@ -60,3 +76,4 @@
 - [ ] 명령어가 Ubuntu 24.04에서 그대로 동작하는 형태인가?
 - [ ] 16GB RAM 환경에서 실행 가능한 리소스 수준인가?
 - [ ] `docs/requirements.md` 의 모든 항목(B/A 시리즈 33개, 본 프로젝트는 [선] 포함 전부 필수)이 현재 작업/계획에 매핑되어 있는가? `docs/BACKLOG.md` 와 `docs/traceability-matrix.md` 에서 R-ID 역참조를 점검했는가?
+- [ ] 새로 작성·수정한 모든 파일·소스코드에 학습용 설명 주석이 충분히 들어갔는가? (특히 Python의 async/decorator/type hint, YAML 비자명 필드, Bash 특수 문법)
