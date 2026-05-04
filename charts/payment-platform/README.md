@@ -47,20 +47,24 @@ chart 가 cluster 안에서 잘 떠도 **외부 시스템(GHCR)** 의 상태가 
 
 ### Fresh install (kind cluster, dev)
 
-`imageTag` 가 비어있으면 helm 이 즉시 fail. CI path-filter 가 4 service 전체를 빌드시킨 가장 최근 main 커밋의 sha 를 자동으로 잡아서 사용:
+`imageTag` 가 비어있으면 helm 이 즉시 fail. 정확한 sha 는 **GHCR 에서 직접 확인** 한다 (GHCR 이 곧 source of truth):
 
-```bash
-helm install payment charts/payment-platform/ \
-  -n payment-dev -f charts/payment-platform/values-dev.yaml \
-  --set global.imageTag=$(git log -1 --format=%H origin/main -- '.github/workflows/' 'services/_template/')
+```
+https://github.com/users/melanieing/packages/container/account/versions
 ```
 
-작동 원리:
-- `.github/workflows/**` 또는 `services/_template/**` 변경은 우리 CI 의 path-filter 가 **4 service 전부를 rebuild** 하는 트리거. 따라서 그 sha 는 4 패키지 모두에 존재.
-- `git log -1 ... -- <paths>` 가 그 조건을 만족하는 가장 최근 main 커밋의 sha 를 반환.
-- 외부 API · gh CLI · jq · 인증 불필요. git 만 있으면 됨.
+페이지에서 가장 최근 40-hex 태그 복사 후:
 
-EPIC 5 의 ArgoCD image updater 도입 후에는 image updater 가 새 sha 를 GHCR 에서 watch → values 파일에 자동 commit. helm install 시 `--set` 자체가 사라진다.
+```bash
+SHA="<paste-here>"      # 예: 3b46c95b762d048e007c78669e5dd9b4b9e67e44
+helm install payment charts/payment-platform/ \
+  -n payment-dev -f charts/payment-platform/values-dev.yaml \
+  --set global.imageTag="$SHA"
+```
+
+**왜 git heuristic 을 안 쓰나**: `git rev-parse origin/main` 도, `git log` path filter 도, GHCR 의 실제 image 존재를 보장 못 한다. CI 가 실패 / 진행 중 / path-filter trigger 누락 등 어떤 이유로든 git 의 최신 sha 가 GHCR 에 없을 수 있음. UI 한 번 확인이 가장 신뢰성 높음.
+
+**EPIC 5 도입 후**: ArgoCD image updater 가 GHCR 을 watch → 새 sha 를 values 파일에 자동 commit → helm install 에 `--set` 자체가 사라짐. 사용자 작업 0.
 
 ```bash
 helm install payment charts/payment-platform/ \
