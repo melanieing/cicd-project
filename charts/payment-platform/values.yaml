@@ -1,0 +1,157 @@
+# charts/payment-platform/values.yaml
+#
+# Helm chart 의 기본 값(default values). `helm install -f values-dev.yaml` 처럼
+# 환경별 override 파일이 이 파일 위에 덮여 최종 렌더링된다.
+#
+# 본 chart 의 templates/ 안 매니페스트들은 이 values 를 참조하여 4 개 service 의
+# Deployment / Service / ConfigMap / HPA 를 동적으로 생성한다.
+#
+# [구조 개요]
+#   global.*        : 4 service 공통 baseline (image registry, env, resources, probes 등)
+#   services.<name> : service 별 override + 도메인 식별 (DOMAIN_ACTION, DB 이름 등)
+#   postgres.*      : 공유 PostgreSQL StatefulSet 설정
+#
+# [override 우선순위] (helm 의 표준 동작)
+#   1) values-prod.yaml / values-dev.yaml
+#   2) --set 명령행 인자
+#   ↑ 위가 더 강함. 이 파일은 가장 약한 default.
+
+# ============================================================
+# global — 4 service 공통 설정
+# ============================================================
+global:
+  # 이미지 registry. 4 service 모두 GHCR 에 push 된다.
+  imageRegistry: ghcr.io/melanieing
+  # 이미지 태그. CI 가 git-sha 로 push 하므로 운영에서는 dev/prod values 가 override.
+  # default 'latest' 는 안전망 — Dev 가 README 따라 helm install 만 했을 때도 일단 동작.
+  imageTag: latest
+  imagePullPolicy: IfNotPresent
+
+  # 모든 service 의 service-account 이름 (현재는 default 사용).
+  # 추후 ServiceAccount + RBAC 강화 시 별도 SA 로 분리.
+  serviceAccountName: default
+
+  # 모든 service pod 의 securityContext. Dockerfile 의 UID/GID 1001 과 일치.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroup: 1001
+    seccompProfile:
+      type: RuntimeDefault
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false  # uvicorn 이 일부 임시 파일 쓰므로 false 유지
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    capabilities:
+      drop: [ALL]
+
+  # 컨테이너 포트. Dockerfile 의 EXPOSE 8000 과 일치.
+  containerPort: 8000
+
+  # default replica 개수. HPA 의 minReplicas 와 정렬.
+  replicaCount: 2
+
+  # default resources (4 service 동일). values-prod 에서 상향 조정 가능.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  # RollingUpdate 전략 (R-B3-M3). maxSurge=1 / maxUnavailable=0 = 항상 신버전 1개 추가 + 구버전 0개 제거.
+  # = 배포 중에도 트래픽 처리 가능 service replica 수가 줄지 않음.
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+  # Probes (R-B3-M2). main.py 의 /health, /health/ready 와 일치.
+  # liveness 는 늦게 시작하고 (startup 중 kill 방지), readiness 는 빠르게 체크.
+  probes:
+    liveness:
+      path: /health
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readiness:
+      path: /health/ready
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 6
+
+  # HPA (R-B3-M1). CPU 70% 기준, replicas 2~10.
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+  # 공통 환경변수 (4 service 모두 적용).
+  env:
+    LOG_LEVEL: INFO
+    DB_POOL_MIN: "1"
+    DB_POOL_MAX: "5"
+
+# ============================================================
+# services — 각 service 의 도메인 + 차별 설정
+# ============================================================
+# range 로 templates/ 가 이 map 을 순회해서 4 service × N 종 매니페스트를 자동 생성.
+services:
+  account:
+    domainAction: open       # POST /open
+    db: account_db
+    notificationUrl: ""      # 호출 안 함
+
+  transfer:
+    domainAction: transfer   # POST /transfer
+    db: transfer_db
+    # K8s service DNS 로 notification 호출. http://<svc>.<ns>.svc.cluster.local:<port>
+    # ns 는 Helm 의 .Release.Namespace 이므로 templates/ 에서 동적으로 채움.
+    notificationUrl: "from-template"
+
+  loan:
+    domainAction: apply      # POST /apply
+    db: loan_db
+    notificationUrl: ""
+
+  notification:
+    domainAction: send       # POST /send
+    db: notification_db
+    notificationUrl: ""
+
+# ============================================================
+# postgres — 공유 PostgreSQL StatefulSet
+# ============================================================
+postgres:
+  enabled: true
+  # docs/tech-stack-versions.md 의 17.9 핀. Dependabot 가 추적.
+  image: postgres:17.9-alpine
+  # PVC 크기. dev 는 작게, prod 는 values-prod 에서 상향.
+  storage: 2Gi
+
+  # 사용자명·암호. 운영에서는 ExternalSecrets / SealedSecrets 등으로 주입 권장.
+  # 본 chart 는 데모용이라 stringData 직접 사용 (Secret 매니페스트 안에서).
+  user: payment
+  password: payment-dev-pw
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # 4 service 가 사용할 DB 명. init.sql 이 이 목록을 사용해 생성.
+  databases:
+    - account_db
+    - transfer_db
+    - loan_db
+    - notification_db

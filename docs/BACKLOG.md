@@ -49,19 +49,19 @@
 | 3.2 | 4잡 매트릭스 병렬 빌드/테스트 ✅ + **직렬 vs 병렬 시간 측정** ✅ (run #7/#8 데이터, 약 3× speedup) | B1-O1 | 동일 워크플로 / `docs/metrics/ci-parallelization.md` [★] |
 | 3.3 | Docker Buildx + GHCR 푸시 (`git-sha` 태그) ✅ | B1-M2, B2-M2 | 동일 워크플로 |
 | 3.4 | Trivy 이미지 스캔 (HIGH/CRITICAL 차단) ✅ | B2-M3 | 동일 워크플로 |
-| 3.5 | Trivy 결과 PR 코멘트 자동 게시 ✅ + 실제 PR 캡처 🟡 (PR 한 건 후) | B2-O1 | 동일 워크플로, 스크린샷 |
+| 3.5 | Trivy 결과 PR 코멘트 자동 게시 ✅ + 실제 PR 캡처 ✅ | B2-O1 | 동일 워크플로, `docs/screenshots/trivy-pr-comment.png` |
 | 3.6 | Slack `#deploy-status` 성공/실패 알림 ✅ + Webhook secret 등록 ✅ + 실제 알림 도착 확인 | B1-M3 | 동일 워크플로 + Repo Secret |
 
 ## EPIC 4 — Helm & K8s 배포 (Day 2 오후)
 
 | ID | 태스크 | R-ID | 산출물 |
 |---|---|---|---|
-| 4.1 | `payment-platform` umbrella Helm chart 골격 | B3-M3 | `charts/payment-platform/Chart.yaml` |
-| 4.2 | Deployment, Service, ConfigMap, Secret 템플릿 | B3-M3 | `templates/` |
-| 4.3 | HPA (CPU 70%, 2~10 replicas) | B3-M1 | `templates/hpa.yaml` |
-| 4.4 | Readiness `/health/ready` (DB ping), Liveness `/health` | B3-M2 | Deployment 템플릿 |
-| 4.5 | `values-dev.yaml`, `values-prod.yaml` 분리 | B3-O2 | values 파일 |
-| 4.6 | RollingUpdate 전략 명시 (maxSurge/maxUnavailable) | B3-M3 | Deployment |
+| 4.1 | `payment-platform` umbrella Helm chart 골격 ✅ | B3-M3 | `charts/payment-platform/Chart.yaml`, `values.yaml`, `_helpers.tpl` |
+| 4.2 | Deployment, Service, ConfigMap, Secret 템플릿 ✅ | B3-M3 | `templates/{deployment,service,configmap,postgres}.yaml` |
+| 4.3 | HPA (CPU 70%, 2~10 replicas) ✅ | B3-M1 | `templates/hpa.yaml` |
+| 4.4 | Readiness `/health/ready` (DB ping), Liveness `/health` ✅ | B3-M2 | `templates/deployment.yaml` |
+| 4.5 | `values-dev.yaml`, `values-prod.yaml` 분리 ✅ | B3-O2 | `charts/payment-platform/values-{dev,prod}.yaml` |
+| 4.6 | RollingUpdate 전략 명시 (maxSurge/maxUnavailable) ✅ | B3-M3 | `templates/deployment.yaml` |
 
 ## EPIC 5 — GitOps (ArgoCD) (Day 3 오전)
 

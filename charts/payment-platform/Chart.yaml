@@ -1,0 +1,38 @@
+# charts/payment-platform/Chart.yaml
+#
+# Helm chart 의 메타데이터. helm install / template / lint 가 첫 줄부터 읽는다.
+# Chart.yaml 이 정의된 디렉토리가 chart 의 "source root" 이고, 그 아래에
+# values.yaml / templates/ / charts/ (subchart 용) 등이 위치한다.
+#
+# [필드 설명]
+#   apiVersion: chart 스키마 버전. v2 는 Helm 3 의 표준.
+#   name      : helm install <name> 의 default name 으로도 쓰임.
+#                K8s 리소스 이름 prefix 로 들어가므로 RFC 1123 (소문자/숫자/하이픈) 준수.
+#   type      : application | library. application = 배포 가능한 chart, library = 다른 chart 가 import.
+#   version   : chart 자체 버전 (의존성·재배포 추적용). semver. 코드와 별개.
+#   appVersion: chart 가 배포하는 애플리케이션의 버전 (단순 표시용).
+#                본 프로젝트에서는 git-sha 가 이미지 태그라 의미가 적지만, helm list 에서 표시용.
+
+apiVersion: v2
+name: payment-platform
+description: |
+  Fintech payment platform umbrella chart for the cicd-project portfolio.
+  Deploys 4 mock services (account, transfer, loan, notification) sharing
+  one PostgreSQL StatefulSet, with HPA, probes, and RollingUpdate.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+# Helm 버전 호환. docs/tech-stack-versions.md 의 K8s 1.33 / Helm 3.20 핀과 정렬.
+kubeVersion: ">=1.30.0"
+
+keywords:
+  - fintech
+  - payment
+  - microservices
+  - portfolio
+  - devops
+
+maintainers:
+  - name: Melanie Woo
+    email: melanieing@users.noreply.github.com

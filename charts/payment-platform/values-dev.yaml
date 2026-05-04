@@ -1,0 +1,35 @@
+# charts/payment-platform/values-dev.yaml
+#
+# dev 환경 override.
+# `helm install payment . -n payment-dev -f values-dev.yaml` 로 적용.
+#
+# values.yaml (default) 위에 덮여 다음만 변경:
+#   - 이미지 태그: latest 대신 명시적 'main' (CI 가 main push 시 latest tag 도 함께 push 한다고 가정)
+#   - HPA 비활성: 부하 테스트 안 하므로 replicas 고정 1개로 메모리 절약
+#   - resources 작게: 16GB 호스트 친화
+
+global:
+  imageTag: latest
+
+  # dev 는 메모리 압박 최소화 — replicas 1 + HPA off
+  replicaCount: 1
+  hpa:
+    enabled: false
+
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+postgres:
+  storage: 1Gi  # dev 데이터 적음
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi

@@ -1,0 +1,44 @@
+# charts/payment-platform/values-prod.yaml
+#
+# prod 환경 override.
+# `helm install payment . -n payment-prod -f values-prod.yaml` 로 적용.
+#
+# 본 프로젝트 시나리오상 prod 도 같은 kind 클러스터의 다른 namespace 에 배포되어
+# resources 는 dev 보다 약간 크게, HPA 활성, 비밀번호는 별도 시나리오(외부 주입) 로.
+
+global:
+  imageTag: latest  # 운영에서는 ArgoCD image updater 가 git-sha 로 교체 (EPIC 5)
+
+  # prod 는 HPA 활성. min 2 / max 10.
+  replicaCount: 2
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+postgres:
+  storage: 5Gi
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  # 운영에서는 stringData 평문 비밀번호를 두지 않음.
+  # ExternalSecrets / SealedSecrets 등으로 주입 시:
+  #   1. helm 의 stringData 부분을 비워두고
+  #   2. 외부 secret operator 가 동일 이름의 Secret 을 생성하도록 설정.
+  # 현재는 chart 가 자체 Secret 을 만들고 있으므로 chart-managed password 를
+  # 다른 값으로만 분리해 시연.
+  password: "REPLACE-ME-IN-REAL-PROD"
