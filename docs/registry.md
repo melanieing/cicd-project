@@ -139,61 +139,71 @@ GHCR 의 **untagged 이미지** 는 가만히 두면 무한 누적된다.
 같은 git-sha 로 빌드한 이미지가 같은 태그를 새로 받으면 이전 이미지가 untagged 가 되어 남는다.
 또한 multi-platform 빌드의 manifest list 는 platform 별 sub-image 를 untagged 로 보유한다 (정상).
 
-본 프로젝트는 **30 일 이상 untagged 상태인 이미지를 자동 삭제**하는 정책을 적용한다.
+본 프로젝트는 **untagged 버전을 매주 정리하되 최근 5 개는 보존** 하는 정책을 적용한다.
 
-### 5.1 적용 절차 (수동, GitHub UI)
+### 5.1 적용 방식 — GitHub Action 기반 자동 cleanup workflow (권장·실제 채택)
 
-GHCR 의 retention policy 는 매니페스트화되어 있지 않아 GitHub UI 에서 설정해야 한다 (2026-05 기준).
-4 패키지 각각에 동일 정책을 한 번씩 적용한다.
+> **개인 계정 한정**: GHCR 의 per-package retention UI 는 **organization 계정에만 노출되며 개인 계정에는 없다**.
+> 따라서 개인 계정에서는 코드(GitHub Actions cron) 로 retention 을 구현하는 게 사실상 유일한 자동화 경로.
+> 자세한 경위와 함정 회피: [`docs/troubleshooting/2026-05-04-ghcr-retention-ui-personal-account.md`](troubleshooting/2026-05-04-ghcr-retention-ui-personal-account.md)
 
-#### Step 1. 패키지 상세 페이지로 이동
+#### 산출물
 
-```
-https://github.com/users/melanieing/packages/container/account/settings
-https://github.com/users/melanieing/packages/container/transfer/settings
-https://github.com/users/melanieing/packages/container/loan/settings
-https://github.com/users/melanieing/packages/container/notification/settings
-```
+`.github/workflows/ghcr-cleanup.yml` — 매주 월요일 01:00 UTC 에 4 패키지를 매트릭스 병렬 정리.
 
-> 각 패키지가 처음 push 된 후에야 위 URL 이 유효해진다.
-> EPIC 3 의 ci.yml 이 첫 push 를 한 다음에야 이 단계가 의미 있어진다.
-
-#### Step 2. "Manage Actions access" 영역 아래의 retention 설정
-
-- "Manage Actions access" 를 cicd-project 리포로 연결 (CI 가 push 가능하도록)
-- 페이지 하단의 **"Manage versions"** 또는 **"Pruning policy"** 영역에서:
-  - `Untagged versions only`
-  - `Older than: 30 days`
-- `Save` 클릭
-
-#### Step 3. 적용 전후 캡처
-
-- 정책 적용 전: untagged 이미지 카운트 캡처 → `docs/screenshots/ghcr-retention-before.png`
-- 정책 적용 후 (다음 주 동일 시각): 카운트 변화 캡처 → `docs/screenshots/ghcr-retention-after.png`
-
-> **참고**: GitHub 의 retention 정책은 **즉시 발동하지 않는다.**
-> 매일 1 회 정도 백그라운드 작업으로 정리되므로 즉각적인 카운트 감소를 기대하지 말 것.
-
-### 5.2 자동화 가능성 (선택, EPIC 9 후보)
-
-GHCR 의 패키지 삭제는 GitHub REST API 로 호출 가능:
-```
-DELETE /user/packages/container/<package>/versions/<version_id>
-```
-
-`actions/delete-package-versions` 액션을 사용하면 workflow 로 자동화 가능:
-
+핵심:
 ```yaml
-- uses: actions/delete-package-versions@<sha-pin>
-  with:
-    package-name: account
-    package-type: container
-    min-versions-to-keep: 5
-    delete-only-untagged-versions: true
+on:
+  schedule:
+    - cron: '0 1 * * 1'        # Monday 01:00 UTC
+  workflow_dispatch:
+permissions:
+  packages: write
+jobs:
+  prune:
+    strategy:
+      matrix:
+        package: [account, transfer, loan, notification]
+    steps:
+      - uses: actions/delete-package-versions@v5
+        with:
+          package-name: ${{ matrix.package }}
+          package-type: container
+          min-versions-to-keep: 5
+          delete-only-untagged-versions: true
 ```
 
-CI workflow 에 일부로 넣으면 매 push 마다 정리 가능. 다만 본 프로젝트는 단순화를 위해
-**UI 정책 + 캡처** 까지만 시연하고, 자동화 워크플로는 산출물에서 제외.
+행동 보증:
+- `delete-only-untagged-versions: true` → tagged (`:<git-sha>`, `:sha-<short>`) 이미지는 절대 삭제 안 됨
+- `min-versions-to-keep: 5` → 만일의 rollback 을 위해 직전 untagged 빌드 5 개 보존
+- 매트릭스 fail-fast 비활성 → 한 패키지 실패가 다른 패키지 정리를 막지 않음
+- `workflow_dispatch` 로 즉시 수동 실행 가능 (디버깅·일회성 정리용)
+
+#### 첫 적용·검증 절차
+
+1. main 으로 머지 → workflow 활성화
+2. Actions 탭에서 `GHCR cleanup (untagged)` 워크플로 → `Run workflow` 로 즉시 트리거
+3. 실행 후 패키지 페이지에서 untagged 카운트 변화 확인
+   ```
+   https://github.com/users/melanieing/packages/container/account/versions
+   ```
+4. 적용 전후 카운트 캡처 → `docs/screenshots/ghcr-retention-before.png` / `-after.png`
+
+### 5.2 수동 옵션 (1회용, 권장 안 함)
+
+수동으로 즉시 다 지우고 싶을 때만:
+- `https://github.com/users/melanieing/packages/container/<name>/versions`
+  → 각 untagged 버전의 `...` → `Delete this version` 클릭
+- 또는 패키지 페이지의 `Package settings` → `Danger Zone` → `Delete package` (전체 삭제)
+
+### 5.3 organization 계정으로 옮길 경우
+
+조직(`octo-org/...`) 으로 패키지를 옮기면 다음 UI 가 추가로 노출되어 cron workflow 없이도 retention 가능:
+
+- `https://github.com/orgs/<org>/packages/container/<name>/settings` 의 **Manage versions** 섹션
+- `Untagged versions older than N days` 옵션을 GUI 로 설정
+
+본 프로젝트(개인 계정) 는 5.1 의 workflow 방식을 사용한다.
 
 ---
 

@@ -1,0 +1,55 @@
+# .github/workflows/ghcr-cleanup.yml
+#
+# GHCR 의 untagged 이미지를 주기적으로 정리하는 cron workflow.
+# R-B2-O2 (untagged 자동 삭제) 의 실제 구현체.
+#
+# [왜 별도 workflow 인가]
+# GitHub UI 의 패키지 retention 정책은 organization 계정에서만 노출되고
+# 개인 계정에는 없다. 따라서 retention 을 코드(GitHub Action) 로 구현해야
+# 자동화가 유일하게 가능하다.
+# 자세한 경위: docs/troubleshooting/2026-05-04-ghcr-retention-ui-personal-account.md
+#
+# [정책]
+#   - 매주 월요일 01:00 UTC (= 한국 10:00) 에 실행
+#   - 4 개 패키지(account/transfer/loan/notification) 를 매트릭스로 병렬 정리
+#   - 각 패키지의 untagged 버전 중 **최신 5 개를 제외한 모두** 삭제
+#   - tagged 버전(git-sha 태그가 살아있는 것) 은 절대 건드리지 않음
+#   - workflow_dispatch 로 수동 실행 가능 (디버깅·즉시 정리용)
+
+name: GHCR cleanup (untagged)
+
+on:
+  schedule:
+    # 매주 월요일 01:00 UTC. cron: 분 시 일 월 요일.
+    # ci 의 dependabot 스케줄(00:00) 이후 1시간 텀을 둬서 monitoring/triage 가 분리되게 함.
+    - cron: '0 1 * * 1'
+  workflow_dispatch:
+
+# 패키지 삭제는 packages: write 권한이 필요하다. 기본 GITHUB_TOKEN 으로 충분.
+permissions:
+  packages: write
+  contents: read
+
+jobs:
+  prune:
+    name: Prune untagged (${{ matrix.package }})
+    runs-on: ubuntu-24.04
+    strategy:
+      # 한 패키지의 정리 실패가 다른 패키지의 정리를 막지 않도록 fail-fast 비활성.
+      fail-fast: false
+      matrix:
+        package: [account, transfer, loan, notification]
+    steps:
+      # actions/delete-package-versions 의 동작:
+      #   - package-type: container | maven | npm | rubygems | nuget
+      #   - delete-only-untagged-versions: true 면 tagged 버전 보호
+      #   - min-versions-to-keep: 보존할 최소 untagged 버전 수
+      #     (5 로 둔 이유: 만일의 rollback 을 위해 직전 빌드들 약간 보존)
+      #   - ignore-versions: 정규식. 특정 태그 패턴은 무시 (안전 그물)
+      - name: Delete untagged GHCR versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: ${{ matrix.package }}
+          package-type: container
+          min-versions-to-keep: 5
+          delete-only-untagged-versions: true
