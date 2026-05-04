@@ -69,40 +69,68 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      # path filter — 4 service 디렉토리 변경 여부를 boolean 으로 노출
+      # path filter — 4 service 디렉토리 + 공유 영역(workflow / _template) 변경 여부를 boolean 으로 노출.
+      # workflow / _template 는 4 service 모두에 영향을 주는 "공유 변경" 이므로 별도 필터로 두고
+      # 다음 step 에서 전체 service 매트릭스 트리거에 사용한다.
       - name: Path filter
         id: filter
         uses: dorny/paths-filter@v4
         with:
           filters: |
+            workflow: '.github/workflows/**'
+            template: 'services/_template/**'
             account: 'services/account/**'
             transfer: 'services/transfer/**'
             loan: 'services/loan/**'
             notification: 'services/notification/**'
 
       # 변경된 service 들을 JSON 배열로 정리. matrix 에 그대로 주입 가능한 형태.
+      #
+      # 우선순위:
+      #   1) workflow_dispatch 수동 트리거           → 전체 빌드 (디버깅·강제 재실행 의도)
+      #   2) workflow 또는 _template 의 공유 변경    → 전체 빌드 (영향 범위가 4 서비스 전체)
+      #   3) 일반 path filter                       → 변경된 service 만
+      #
+      # 첫 PR 의 첫 push 처럼 workflow 자체만 바뀐 경우, 과거 버전은 has-changes=false 로
+      # 모든 후속 잡이 skip 되어 "왜 안 도냐" 혼란이 발생. 본 분기로 회피.
+      # See: docs/troubleshooting/2026-05-04-ci-empty-matrix-on-workflow-only-change.md
       - name: Build matrix array
         id: matrix
         shell: bash
         run: |
           set -euo pipefail
-          arr='[]'
-          # filter 출력은 'true'/'false' 문자열. true 인 service 만 배열에 추가.
-          [[ "${{ steps.filter.outputs.account }}" == "true" ]] \
-            && arr=$(echo "$arr" | jq -c '. + ["account"]')
-          [[ "${{ steps.filter.outputs.transfer }}" == "true" ]] \
-            && arr=$(echo "$arr" | jq -c '. + ["transfer"]')
-          [[ "${{ steps.filter.outputs.loan }}" == "true" ]] \
-            && arr=$(echo "$arr" | jq -c '. + ["loan"]')
-          [[ "${{ steps.filter.outputs.notification }}" == "true" ]] \
-            && arr=$(echo "$arr" | jq -c '. + ["notification"]')
+
+          ALL='["account","transfer","loan","notification"]'
+          EVENT="${{ github.event_name }}"
+          WORKFLOW_CHANGED="${{ steps.filter.outputs.workflow }}"
+          TEMPLATE_CHANGED="${{ steps.filter.outputs.template }}"
+
+          if [[ "$EVENT" == "workflow_dispatch" ]]; then
+            arr="$ALL"
+            reason="manual workflow_dispatch trigger"
+          elif [[ "$WORKFLOW_CHANGED" == "true" ]] || [[ "$TEMPLATE_CHANGED" == "true" ]]; then
+            arr="$ALL"
+            reason="shared change (workflow=$WORKFLOW_CHANGED, template=$TEMPLATE_CHANGED) - rebuild all services"
+          else
+            arr='[]'
+            [[ "${{ steps.filter.outputs.account }}" == "true" ]] \
+              && arr=$(echo "$arr" | jq -c '. + ["account"]')
+            [[ "${{ steps.filter.outputs.transfer }}" == "true" ]] \
+              && arr=$(echo "$arr" | jq -c '. + ["transfer"]')
+            [[ "${{ steps.filter.outputs.loan }}" == "true" ]] \
+              && arr=$(echo "$arr" | jq -c '. + ["loan"]')
+            [[ "${{ steps.filter.outputs.notification }}" == "true" ]] \
+              && arr=$(echo "$arr" | jq -c '. + ["notification"]')
+            reason="per-service path filter"
+          fi
+
           echo "services=$arr" >> "$GITHUB_OUTPUT"
           if [[ "$arr" == "[]" ]]; then
             echo "has-changes=false" >> "$GITHUB_OUTPUT"
           else
             echo "has-changes=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "Detected services: $arr"
+          echo "Detected services: $arr ($reason)"
 
   # =========================================================================
   # Job 2) test — service 별 pytest (R-B1-M2 단위 테스트 게이트)
