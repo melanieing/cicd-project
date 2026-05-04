@@ -269,9 +269,9 @@ docker --version && kind version && kubectl version --client | head -1 \
 
 ```bash
 cd services/transfer
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-pytest
+python3 -m venv .venv
+./.venv/bin/pip install -r requirements.txt
+./.venv/bin/pytest
 ```
 
 예상 출력:
@@ -280,6 +280,10 @@ tests/test_main.py::test_health_returns_ok PASSED
 tests/test_main.py::test_transfer_action_skips_notification_when_url_unset PASSED
 === 2 passed in 0.4s ===
 ```
+
+> `source .venv/bin/activate` 대신 venv 의 binary 를 직접 호출(`./.venv/bin/pytest`)한다.
+> activate 는 PATH 만 바꾸므로 system 의 같은 이름 도구가 우선 잡힐 수 있고, 일부만 복붙하면 누락되는 함정이 있다.
+> 직접 호출 방식은 venv 활성화 여부와 무관하게 항상 그 venv 만 사용한다.
 
 ### 4. 다음 단계
 

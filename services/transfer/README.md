@@ -60,11 +60,13 @@ postgres·notification 어느 쪽도 없어도 통과:
 
 ```bash
 cd services/transfer
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-pytest
+python3 -m venv .venv
+./.venv/bin/pip install -r requirements.txt
+./.venv/bin/pytest
 # 2 passed (test_health_returns_ok, test_transfer_action_skips_notification_when_url_unset)
 ```
+
+> 다중 서비스 일괄 실행은 [`scripts/test-all.sh`](../../scripts/test-all.sh) 참조.
 
 ## 로컬 실행 (e2e)
 
@@ -78,19 +80,19 @@ kubectl -n payment-dev port-forward svc/postgres 5432:5432
 ```bash
 # Terminal 1 — notification (포트 8003)
 cd services/notification
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+python3 -m venv .venv
+./.venv/bin/pip install -r requirements.txt
 export $(grep -v '^#' .env.example | xargs)
-uvicorn main:app --host 0.0.0.0 --port 8003 --reload
+./.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8003 --reload
 ```
 
 ```bash
 # Terminal 2 — transfer (포트 8002)
 cd services/transfer
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+python3 -m venv .venv
+./.venv/bin/pip install -r requirements.txt
 export $(grep -v '^#' .env.example | xargs)
-uvicorn main:app --host 0.0.0.0 --port 8002 --reload
+./.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8002 --reload
 ```
 
 > port-forward 없이 빠르게 보려면 두 터미널 모두 `unset DATABASE_URL` 후 실행.
