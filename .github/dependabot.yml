@@ -97,26 +97,29 @@ updates:
           - "pytest*"
 
   # ============================================================
-  # 3) GitHub Actions — .github/workflows/*.yml 안의 액션 핀
+  # 3) GitHub Actions — .github/workflows/*.yml
   # ============================================================
-  # EPIC 3 의 ci.yml 가 들어오면 즉시 추적 시작.
-  # Trivy 같은 보안 도구의 SHA 핀 갱신도 여기서 자동 PR 로 들어온다.
-  - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
-      day: monday
-      time: "00:00"
-      timezone: Etc/UTC
-    open-pull-requests-limit: 3
-    labels:
-      - dependencies
-      - ci
-    commit-message:
-      prefix: "deps(actions)"
-    assignees:
-      - melanieing
-    groups:
-      actions:
-        patterns:
-          - "*"
+  # EPIC 3 의 ci.yml 이 작성된 후에 활성화한다.
+  # 현재는 workflows 디렉토리에 .yml 이 없어 활성화하면 매 스캔마다
+  # "Dependabot couldn't find a <anything>.yml" 오류가 누적되므로 의도적으로 주석 처리.
+  # See: docs/troubleshooting/2026-05-04-dependabot-actions-no-workflows.md
+  #
+  # - package-ecosystem: github-actions
+  #   directory: /
+  #   schedule:
+  #     interval: weekly
+  #     day: monday
+  #     time: "00:00"
+  #     timezone: Etc/UTC
+  #   open-pull-requests-limit: 3
+  #   labels:
+  #     - dependencies
+  #     - ci
+  #   commit-message:
+  #     prefix: "deps(actions)"
+  #   assignees:
+  #     - melanieing
+  #   groups:
+  #     actions:
+  #       patterns:
+  #         - "*"
