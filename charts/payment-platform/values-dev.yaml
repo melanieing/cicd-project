@@ -9,7 +9,9 @@
 #   - resources 작게: 16GB 호스트 친화
 
 global:
-  imageTag: latest
+  # imageTag 는 의도적으로 비워둠. 사용자가 helm install 시 명시:
+  #   helm install ... -f values-dev.yaml --set global.imageTag=$(git rev-parse origin/main)
+  # 정책 근거: docs/registry.md §3.2 (mutable tag 미사용).
 
   # dev 는 메모리 압박 최소화 — replicas 1 + HPA off
   replicaCount: 1

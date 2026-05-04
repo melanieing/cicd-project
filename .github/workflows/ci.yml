@@ -309,12 +309,13 @@ jobs:
       # GHCR push — main 브랜치의 push 이벤트일 때만.
       # 같은 build context 를 다시 빌드하지만 cache 가 모두 hit 되므로 사실상 push 만 수행됨.
       #
-      # 태그 3종 push:
+      # 태그 정책 (docs/registry.md §3 참조):
       #   - tag_full  : ghcr.io/<owner>/<svc>:<40-hex-sha>      (immutable, GitOps 핵심)
       #   - tag_short : ghcr.io/<owner>/<svc>:sha-<7-hex>        (사람이 읽기 편함)
-      #   - latest    : ghcr.io/<owner>/<svc>:latest             (helm install default 의 안전망)
-      # latest 는 mutable 이지만 main 브랜치 최신 빌드를 가리키는 anchor 역할.
-      # 운영 GitOps 에서는 ArgoCD image updater 가 sha 태그를 따라가도록 설정.
+      #
+      # `:latest` 같은 mutable 태그는 의도적으로 push 하지 않는다.
+      # docs/registry.md §3.2 의 결정: 재현성·추적성·캐싱 함정 회피.
+      # helm install 시 UX 는 사용자가 --set global.imageTag=<sha> 로 명시하도록 chart 가 강제.
       - name: Push to GHCR (main only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v7
@@ -324,7 +325,6 @@ jobs:
           tags: |
             ${{ steps.refs.outputs.tag_full }}
             ${{ steps.refs.outputs.tag_short }}
-            ${{ steps.refs.outputs.image }}:latest
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
           labels: |

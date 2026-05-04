@@ -22,10 +22,15 @@
 global:
   # 이미지 registry. 4 service 모두 GHCR 에 push 된다.
   imageRegistry: ghcr.io/melanieing
-  # 이미지 태그. CI 가 main push 시 git-sha + sha-short + latest 3종 태그를 push.
-  # default 'latest' 는 안전망 — README 의 helm install 한 줄로 일단 동작.
-  # GitOps 운영에서는 ArgoCD image updater 가 sha-short 태그를 추적하도록 설정.
-  imageTag: latest
+
+  # 이미지 태그 — 의도적으로 비어있음 (docs/registry.md §3.2 정책: mutable tag 미사용).
+  # helm install 시 반드시 명시:
+  #   helm install ... --set global.imageTag=$(git rev-parse origin/main)
+  # 또는 values-{dev,prod}.yaml 에서 sha 명시.
+  # ArgoCD image updater 도입 후에는 updater 가 자동 갱신.
+  # templates/_helpers.tpl 의 fail() 가 빈 값에서 helm 을 즉시 abort 시킨다.
+  imageTag: ""
+
   imagePullPolicy: IfNotPresent
 
   # imagePullSecrets — GHCR 패키지가 private 일 때 사용.
