@@ -14,7 +14,7 @@
 #
 # [버전 핀 출처]
 #   docs/tech-stack-versions.md
-#     - 베이스 이미지: python:3.13-slim-bookworm  (Python 3.13.13 기준)
+#   현재 사용 버전은 아래 FROM 라인 참조 (Dependabot 이 주간 자동 추적)
 
 # =============================================================================
 # Stage 1) builder — 의존성을 venv 에 설치
@@ -25,7 +25,7 @@ FROM python:3.14-slim-bookworm AS builder
 WORKDIR /build
 
 # 필요 시 컴파일에 쓰일 시스템 도구. 현재 의존성(asyncpg, pydantic, uvicorn) 은
-# python:3.13-slim 환경의 wheel 이 모두 존재하므로 이 RUN 은 주석 처리.
+# python:3.x-slim 환경의 wheel 이 모두 존재하므로 이 RUN 은 주석 처리.
 # (만약 wheel 이 없는 패키지가 추가되면 아래를 활성화하여 컴파일 가능하게 한다)
 # RUN apt-get update \
 #     && apt-get install -y --no-install-recommends gcc libc6-dev \
