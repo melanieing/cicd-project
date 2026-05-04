@@ -250,6 +250,23 @@ docker --version && kind version && kubectl version --client | head -1 \
 
 ### 3. 서비스 단위 테스트
 
+5개 서비스(_template + 4 services) 의 venv 를 보장하고 pytest 를 일괄 실행:
+
+```bash
+./scripts/test-all.sh
+# 첫 실행은 venv 5개 + 의존성 설치로 1~2분, 이후에는 캐시되어 수 초.
+```
+
+특정 서비스만:
+
+```bash
+./scripts/test-all.sh transfer
+```
+
+기대 결과: `Result: 5 pass, 0 fail` (총 11 테스트 통과).
+
+수동으로 한 서비스만 실행하고 싶다면:
+
 ```bash
 cd services/transfer
 python -m venv .venv && source .venv/bin/activate
