@@ -58,6 +58,20 @@
 - 가벼운 사건이면 각 섹션을 1~2 문단으로 짧게 끝내도 OK. 단, **5섹션 자체는 생략하지 않는다.**
 - 사건 유발 코드/매니페스트를 고치는 커밋 메시지 본문에 해당 troubleshooting 파일을 참조한다 (`See: docs/troubleshooting/...`).
 
+### A-5. 실행 가능 산출물 검증 규칙 (Trust but Verify)
+**`bash -n` 같은 syntax 검사는 동작 검증이 아니다.** 실행 가능한 산출물(`*.sh`, `Dockerfile`, K8s manifest, GHA workflow, Helm chart, Python script 등) 을 작성·수정한 후에는 **실제로 실행해서 의도대로 동작함을 확인한 다음에야 commit** 한다.
+
+- **`*.sh`**: sandbox 가 허용하는 한 `bash <script>` 로 dry-run. 외부 의존(docker, kubectl) 이 없는 범위만이라도 실행. 가능하면 mock env 를 만들어 끝까지 실행.
+- **`Dockerfile`**: `docker build .` (sandbox 에 docker 없으면 `hadolint` 또는 최소한 `--check` 옵션) 으로 검증.
+- **K8s manifest**: `kubectl apply --dry-run=client -f <file>` 또는 `kubeval` / `kubeconform` 으로 schema 검증. 가능하면 실제 클러스터에 apply 한 후 `kubectl wait` 로 ready 대기까지 확인.
+- **Helm chart**: `helm lint` + `helm template` 로 렌더 결과 검증.
+- **GHA workflow**: `act` 또는 최소한 yamllint + 자체 schema 검증.
+- **Python**: import + `python -m compileall` 이상으로, 가능하면 `pytest` 까지.
+
+**검증 불가 사유가 있으면 commit 메시지에 명시한다** ("sandbox 에 docker 없어 build 미실행, 사용자가 로컬에서 검증 예정" 같이). 이 메모가 있으면 사용자가 다음 검증 단계를 의식하고, 없으면 통과로 가정한다.
+
+**가정과 검증을 구분한다.** "절대 경로로 호출하면 cwd 무관할 것" 같은 추론은 **반드시 실행으로 검증**해야 한다. 추론 vs 검증의 혼동이 본 프로젝트의 가장 흔한 회귀 원인이다 (참조: `docs/troubleshooting/2026-05-04-test-all-script-pytest-collection-without-cd.md`).
+
 ---
 
 ## B. 프로젝트 컨텍스트
@@ -92,3 +106,4 @@
 - [ ] `docs/requirements.md` 의 모든 항목(B/A 시리즈 33개, 본 프로젝트는 [선] 포함 전부 필수)이 현재 작업/계획에 매핑되어 있는가? `docs/BACKLOG.md` 와 `docs/traceability-matrix.md` 에서 R-ID 역참조를 점검했는가?
 - [ ] 새로 작성·수정한 모든 파일·소스코드에 학습용 설명 주석이 충분히 들어갔는가? (특히 Python의 async/decorator/type hint, YAML 비자명 필드, Bash 특수 문법)
 - [ ] 운영 이슈(증상-원인-해결의 사이클이 발생했는가)를 만났다면 `docs/troubleshooting/` 에 5섹션 포맷으로 기록하고 인덱스 README 도 갱신했는가?
+- [ ] 새로 작성·수정한 실행 가능 산출물(`*.sh`/Dockerfile/manifest/workflow/Python script)을 **실제로 실행해서** 의도대로 동작함을 확인했는가? (`bash -n` 만으로는 부족)

@@ -76,7 +76,16 @@ for svc in $SERVICES; do
     fi
 
     # pytest 실행. tail 로 마지막 5줄(요약 부분) 만 보여줌.
-    if "$dir/.venv/bin/pytest" --tb=short -q 2>&1 | tail -5; then
+    #
+    # [중요] 반드시 (cd "$dir" && pytest) 형태로 호출해야 한다.
+    # pytest 는 cwd 에서 위로 올라가며 pytest.ini 를 찾아 rootdir 를 결정하고,
+    # 그 결과로 testpaths 와 pythonpath 가 적용된다. cwd 가 service 디렉토리가
+    # 아니면 (예: project root) pytest 가 모든 service 의 test 파일을 한꺼번에
+    # collect 하다 'from main import app' 에서 ImportError 로 실패한다.
+    # 절대 경로 호출(`$dir/.venv/bin/pytest`) 은 binary 위치만 결정할 뿐
+    # cwd 에는 영향이 없다는 점을 잊지 말 것.
+    # (서브셸 `(cd ...)` 로 감싸 cwd 변경이 다음 iteration 에 누출되지 않게 한다.)
+    if (cd "$dir" && ./.venv/bin/pytest --tb=short -q) 2>&1 | tail -5; then
         echo -e "  ${C_GREEN}PASS${C_RESET}"
         ok=$((ok + 1))
     else
