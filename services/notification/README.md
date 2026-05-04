@@ -30,11 +30,13 @@ pytest 는 DB 없이도 통과:
 
 ```bash
 cd services/notification
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-pytest
+python3 -m venv .venv
+./.venv/bin/pip install -r requirements.txt
+./.venv/bin/pytest
 # 2 passed
 ```
+
+> 다중 서비스 일괄 실행은 [`scripts/test-all.sh`](../../scripts/test-all.sh) 참조.
 
 ## 로컬 실행 (e2e)
 
@@ -47,9 +49,8 @@ kubectl -n payment-dev port-forward svc/postgres 5432:5432
 
 ```bash
 cd services/notification
-source .venv/bin/activate
 export $(grep -v '^#' .env.example | xargs)
-uvicorn main:app --host 0.0.0.0 --port 8003 --reload
+./.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8003 --reload
 ```
 
 > 포트 8003: transfer 서비스의 `NOTIFICATION_URL` 기본값과 일치.
