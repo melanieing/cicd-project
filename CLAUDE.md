@@ -58,6 +58,30 @@
 - 가벼운 사건이면 각 섹션을 1~2 문단으로 짧게 끝내도 OK. 단, **5섹션 자체는 생략하지 않는다.**
 - 사건 유발 코드/매니페스트를 고치는 커밋 메시지 본문에 해당 troubleshooting 파일을 참조한다 (`See: docs/troubleshooting/...`).
 
+### A-5-pre. 문제 해결 시 "더 넓은 관점" 의무
+사용자는 본 프로젝트가 **DevOps 포트폴리오** 라는 사실을 강조했다. 따라서 어떤 문제가 발생했을 때 **그 문제의 좁은 범위 안에서만 해결법을 만들지 말 것.** 한 단계 물러서서 다음을 항상 자문:
+
+1. **이 클래스의 문제를 해결하려고 만들어진 기존 도구/패턴이 있는가?**
+   예시:
+   - "GHCR image sha 를 chart values 에 어떻게 넣지?" → 수동 복사·git heuristic·custom script 가 아니라 **ArgoCD image updater** 가 정답.
+   - "secret 평문을 git 에 두기 싫다" → bash 스크립트가 아니라 **External Secrets Operator / Sealed Secrets / SOPS** 가 정답.
+   - "K8s 매니페스트가 환경별로 약간씩 달라" → manual override 가 아니라 **Kustomize / Helm values** 가 정답.
+   - "blue-green / canary" → 손수 yaml 작성이 아니라 **Argo Rollouts / Flagger / Istio VirtualService** 가 정답.
+   - "관측" → custom logging 이 아니라 **Prometheus / Grafana / Kiali / Jaeger** 가 정답.
+
+2. **사용자가 명시적으로 backlog 에 둔 후속 EPIC 이 그 문제를 자동 해결하는가?** 그렇다면 임시 fix 의 수명을 그 EPIC 까지로 한정하고 명시.
+
+3. **임시 해결책을 제시할 때는 그것이 임시임을 명시 + 항구적 해결책의 이름을 함께 알린다.**
+   "지금은 GHCR UI 에서 sha 복사. EPIC 5 의 ArgoCD image updater 도입 후 자동화" 같은 식.
+
+좁은 범위에서 over-engineering 이 발생하는 흔한 신호:
+- bash/python 스크립트로 외부 시스템 상태를 polling/parsing 하기 시작
+- helm template 안에 로직이 늘어남
+- 사용자에게 "수동으로 X 한 다음 Y 하세요" 가 두 번째 단계 이상 등장
+- 같은 카테고리 troubleshooting 이 24h 안에 두 번 이상 발생
+
+이 중 하나라도 보이면 **즉시 멈추고 "이 분야의 표준 도구가 무엇이지?" 를 자문** 한다. 답을 모르면 WebSearch 로 검색.
+
 ### A-5. 실행 가능 산출물 검증 규칙 (Trust but Verify)
 **`bash -n` 같은 syntax 검사는 동작 검증이 아니다.** 실행 가능한 산출물(`*.sh`, `Dockerfile`, K8s manifest, GHA workflow, Helm chart, Python script 등) 을 작성·수정한 후에는 **실제로 실행해서 의도대로 동작함을 확인한 다음에야 commit** 한다.
 

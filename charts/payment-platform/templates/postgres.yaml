@@ -49,7 +49,7 @@ data:
     FROM (VALUES
       {{- $last := sub (len .Values.postgres.databases) 1 -}}
       {{- range $i, $db := .Values.postgres.databases }}
-        ({{ $db | quote }}){{- if ne $i $last }},{{ end }}
+        ({{ $db | squote }}){{- if ne $i $last }},{{ end }}
       {{- end }}
     ) AS t(d)
     WHERE NOT EXISTS (
