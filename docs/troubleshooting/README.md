@@ -41,3 +41,4 @@ YYYY-MM-DD-<short-slug>.md
 |---|---|---|---|
 | 2026-05-03 | [postgres-l-truncated-by-tty-pager](2026-05-03-postgres-l-truncated-by-tty-pager.md) | `\l` 의 TTY pager 가 와이드 출력을 잘라 transfer_db 가 누락된 듯 보임 | 낮음 |
 | 2026-05-04 | [uvicorn-cannot-reach-localhost-postgres](2026-05-04-uvicorn-cannot-reach-localhost-postgres.md) | host 의 `localhost:5432` 는 비어 있어 uvicorn lifespan 이 timeout. `kubectl port-forward` 로 해결 | 낮음 |
+| 2026-05-04 | [test-all-script-pytest-collection-without-cd](2026-05-04-test-all-script-pytest-collection-without-cd.md) | `test-all.sh` 가 service 디렉토리로 cd 안 하고 pytest 절대경로 호출 → rootdir 가 project root 가 되어 ImportError. 더 큰 교훈은 commit 전 미실행 → CLAUDE.md A-5 신설 | 중간 |
