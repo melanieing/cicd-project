@@ -145,16 +145,27 @@ spec:
               value: /var/lib/postgresql/data/pgdata
           resources:
             {{- toYaml .Values.postgres.resources | nindent 12 }}
+          # block sequence — IDE/YAML linter 가 inline flow 안의 Helm 템플릿 토큰을 항목으로 인식 못 하는 문제 회피.
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", {{ .Values.postgres.user | quote }}, "-h", "127.0.0.1"]
+              command:
+                - pg_isready
+                - "-U"
+                - {{ .Values.postgres.user | quote }}
+                - "-h"
+                - "127.0.0.1"
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 6
           livenessProbe:
             exec:
-              command: ["pg_isready", "-U", {{ .Values.postgres.user | quote }}, "-h", "127.0.0.1"]
+              command:
+                - pg_isready
+                - "-U"
+                - {{ .Values.postgres.user | quote }}
+                - "-h"
+                - "127.0.0.1"
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
