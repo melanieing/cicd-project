@@ -124,6 +124,35 @@ lifespan 이 DB 분기를 스킵 (warning 1줄). `/health` 200, `/health/ready` 
 
 ---
 
+## Variant — pytest 도 같은 셸 오염으로 실패한다
+
+같은 셸에서 e2e 검증을 위해 `export DATABASE_URL=...localhost:5432...` 한 후
+별도로 `pytest` 를 돌리면 동일한 TimeoutError 가 재현된다.
+
+원인:
+
+```python
+# 5개 test_main.py 가 공통으로 가진 코드 (수정 전):
+os.environ.setdefault("DATABASE_URL", "")
+                ▲
+                "이미 설정된 값이 있으면 그걸 존중" 의미
+```
+
+`setdefault` 는 셸 환경의 값을 보존하므로, 셸에 `DATABASE_URL` 이 이미 export 되어 있으면
+빈 문자열로 강제하지 못한다. lifespan 은 그 값으로 connect 시도 → 60s timeout → 테스트 실패.
+
+### Fix
+
+5개 테스트 파일에서 `os.environ.setdefault(...)` 를 `os.environ[...] = ...` 로 변경.
+**테스트 격리는 결정성이 우선** 이므로 셸에 어떤 값이 떠 있어도 강제로 덮어쓴다.
+"외부 주입 값 존중" 이라는 setdefault 의 본래 의도는 일반 라이브러리에는 맞지만
+unit test 에서는 오히려 함정이 됐다.
+
+검증: `DATABASE_URL=postgresql://...localhost:5432/...` 가 export 된 상태에서도
+11/11 모두 통과 (3 + 2 + 2 + 2 + 2).
+
+---
+
 ## Lessons learned
 
 1. **로컬 dev 와 클러스터 dev 가 모두 가능한 환경에서는 README 가 두 모드의 차이를 명시해야 한다.**
@@ -136,3 +165,6 @@ lifespan 이 DB 분기를 스킵 (warning 1줄). `/health` 200, `/health/ready` 
 3. **TimeoutError 의 traceback 은 항상 끝부터 거꾸로 읽기.**
    asyncpg 내부 `_create_ssl_connection` 까지 traceback 이 떨어지면
    대개 SSL 자체가 문제가 아니라 TCP layer 에서 막힌 것이다 (TLS 협상 전에 timeout).
+4. **단위 테스트 환경변수는 `setdefault` 가 아닌 직접 할당** 으로 강제한다.
+   `setdefault` 는 셸 환경의 사전 export 를 존중하느라 결정성을 깨뜨린다.
+   "어떤 셸에서 돌려도 동일한 결과" 가 unit test 의 기본 계약이다.

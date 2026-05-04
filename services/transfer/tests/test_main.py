@@ -14,11 +14,12 @@ template 과 달리 transfer 는 notification 호출 로직(Task 1.3) 이 추가
 
 import os
 
-os.environ.setdefault("SERVICE_NAME", "transfer")
-os.environ.setdefault("DOMAIN_ACTION", "transfer")
-os.environ.setdefault("DATABASE_URL", "")
-# 핵심: 빈 값으로 둬서 graceful "skipped" 분기를 강제.
-os.environ.setdefault("NOTIFICATION_URL", "")
+# 테스트 격리를 위해 강제 할당. 자세한 근거는 _template/tests/test_main.py 헤더 참조.
+os.environ["SERVICE_NAME"] = "transfer"
+os.environ["DOMAIN_ACTION"] = "transfer"
+os.environ["DATABASE_URL"] = ""
+# 핵심: 빈 값으로 강제해 graceful "skipped" 분기를 검증 가능하게 함.
+os.environ["NOTIFICATION_URL"] = ""
 
 from fastapi.testclient import TestClient  # noqa: E402
 from main import app  # noqa: E402
