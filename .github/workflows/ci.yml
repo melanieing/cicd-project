@@ -243,33 +243,51 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
 
-      # Trivy scan #1 — HIGH/CRITICAL 발견 시 잡 실패 (exit-code=1 이 핵심).
-      # 본 step 이 fail 하면 후속 push step 이 실행되지 않으므로 푸시 차단 효과 발생.
+      # ---------------------------------------------------------------------
+      # Trivy 스캔 — 공식 CLI Docker 이미지 직접 사용 (third-party action 우회)
+      # ---------------------------------------------------------------------
+      # 원래는 aquasecurity/trivy-action 을 사용했으나 두 가지 문제 발생:
+      #   1) v0.36.0 태그가 실재하지 않음 (CI 가 'unable to find version' 으로 실패)
+      #   2) 2026-03-19 공급망 사건으로 v0.34.2 이하 모든 태그가 force-push 되어
+      #      안전성에 의문이 남음. 사후 새 태그(v0.35.0 등) 도 검증 부담.
       #
-      # SHA 핀 권장: aquasecurity/trivy-action@<40-hex-sha>
-      # 현재는 0.36.0+ release 태그 사용 (2026-03 공급망 사건 이후 안전 채널).
-      # docs/tech-stack-versions.md A-8 항목 참조.
+      # 결정: 공식 Trivy CLI 의 immutable Docker 이미지(aquasec/trivy:0.70.0) 를
+      #       직접 호출. action wrapper 를 거치지 않아 공급망 표면 제거.
+      #       0.70.0 은 CLI 레벨에서 v0.69.4 악성 release 이후의 안전 버전
+      #       (docs/tech-stack-versions.md 참조).
+      #
+      # 흐름:
+      #   - host 의 docker.sock 을 mount 해 컨테이너 안 trivy 가 host 의 image 를 스캔
+      #   - 첫 스캔 (gate): HIGH/CRITICAL 발견 시 exit 1 → 후속 push step skip
+      #   - 두 번째 스캔 (PR comment): exit 0, 결과를 파일로 저장
+      # ---------------------------------------------------------------------
       - name: Trivy scan (block on HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@0.36.0
-        with:
-          image-ref: ${{ steps.refs.outputs.tag_full }}
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-          ignore-unfixed: true
-          format: table
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD":/workspace \
+            -w /workspace \
+            aquasec/trivy:0.70.0 image \
+              --severity HIGH,CRITICAL \
+              --exit-code 1 \
+              --ignore-unfixed \
+              --format table \
+              "${{ steps.refs.outputs.tag_full }}"
 
-      # Trivy scan #2 — 전체 결과를 파일로 저장 (PR 코멘트용).
-      # PR 이벤트에서만 실행. exit-code 는 0 으로 둬서 잡 실패 방지.
       - name: Trivy scan (full report for PR comment)
         if: github.event_name == 'pull_request'
-        uses: aquasecurity/trivy-action@0.36.0
-        with:
-          image-ref: ${{ steps.refs.outputs.tag_full }}
-          severity: HIGH,CRITICAL,MEDIUM
-          exit-code: '0'
-          ignore-unfixed: true
-          format: table
-          output: trivy-${{ matrix.service }}.txt
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD":/workspace \
+            -w /workspace \
+            aquasec/trivy:0.70.0 image \
+              --severity HIGH,CRITICAL,MEDIUM \
+              --exit-code 0 \
+              --ignore-unfixed \
+              --format table \
+              --output trivy-${{ matrix.service }}.txt \
+              "${{ steps.refs.outputs.tag_full }}"
 
       # PR 코멘트로 Trivy 결과 부착. sticky-pull-request-comment 가 같은 header 의
       # 코멘트를 매번 생성하지 않고 update 하므로 PR 이 코멘트로 도배되지 않는다.
@@ -316,8 +334,14 @@ jobs:
     if: always() && needs.changes.outputs.has-changes == 'true'
     runs-on: ubuntu-24.04
     steps:
-      # 전체 파이프라인의 종합 상태 결정.
+      # 전체 파이프라인의 종합 상태 + Slack payload 에 안전하게 들어갈 모든 변수를 한 번에 계산.
       # GHA 의 needs.<job>.result 는 'success' / 'failure' / 'cancelled' / 'skipped' 중 하나.
+      #
+      # [중요] services 변수 처리:
+      #   needs.changes.outputs.services 는 '["account","transfer"]' 같은 JSON 배열 문자열.
+      #   이걸 그대로 JSON payload 의 string field 에 보간하면 내부 " 가 JSON 을 깨뜨림
+      #   ('Failed to parse contents of the provided payload' 에러 원인).
+      #   여기서 jq 로 콤마 분리 평문(`account, transfer`) 으로 변환해 안전·가독성 확보.
       - name: Determine overall status
         id: status
         shell: bash
@@ -334,6 +358,16 @@ jobs:
             echo "emoji=:x:" >> "$GITHUB_OUTPUT"
             echo "color=danger" >> "$GITHUB_OUTPUT"
           fi
+
+          # services JSON 배열 → 콤마 분리 문자열로 평탄화.
+          # 입력이 '[]' 또는 비어 있으면 'none' 표시.
+          services_json='${{ needs.changes.outputs.services }}'
+          if [[ -z "$services_json" || "$services_json" == "[]" ]]; then
+            services_display="none"
+          else
+            services_display=$(echo "$services_json" | jq -r '. | join(", ")')
+          fi
+          echo "services_display=$services_display" >> "$GITHUB_OUTPUT"
 
       # SLACK_WEBHOOK_URL 시크릿이 미설정이면 step 자체를 skip.
       # `secrets.X != ''` 는 if 표현식에서 직접 못 쓰므로 env 우회.
@@ -354,7 +388,7 @@ jobs:
                   "fields": [
                     { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
                     { "title": "Event", "value": "${{ github.event_name }}", "short": true },
-                    { "title": "Services", "value": "${{ needs.changes.outputs.services }}", "short": false },
+                    { "title": "Services", "value": "${{ steps.status.outputs.services_display }}", "short": false },
                     { "title": "Commit", "value": "<https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>", "short": false },
                     { "title": "Run", "value": "<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_id }}>", "short": false }
                   ]
