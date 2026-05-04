@@ -78,14 +78,21 @@ spec:
             - configMapRef:
                 name: {{ include "payment-platform.serviceFullname" $svcCtx }}-config
           # DB 비밀번호만 별도 Secret 에서 주입 (보안 분리).
+          #
+          # [중요] env 변수 순서는 K8s 의 dependency resolve 에 영향.
+          # `$(VAR)` substitution 은 같은 env 목록에서 **그 이전에 정의된 변수만** 참조 가능.
+          # DATABASE_URL 안에 $(DB_PASSWORD) 를 쓰므로 DB_PASSWORD 가 먼저 와야 함.
+          # 순서가 뒤바뀌면 kubelet 이 substitution 을 못 해 literal "$(DB_PASSWORD)" 가
+          # asyncpg 에 password 로 전달되어 InvalidPasswordError → uvicorn exit 3.
+          # See: docs/troubleshooting/2026-05-04-k8s-env-substitution-order.md
           env:
-            - name: DATABASE_URL
-              value: "postgresql://{{ $.Values.postgres.user }}:$(DB_PASSWORD)@{{ include "payment-platform.dbHost" $ }}:5432/{{ $svc.db }}"
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: postgres-secret
                   key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql://{{ $.Values.postgres.user }}:$(DB_PASSWORD)@{{ include "payment-platform.dbHost" $ }}:5432/{{ $svc.db }}"
           # Liveness — main.py 의 /health (DB 무관, 프로세스 생존 확인)
           livenessProbe:
             httpGet:
