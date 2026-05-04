@@ -24,12 +24,30 @@
 | `DOMAIN_ACTION` | `send` | POST /send 라우트 |
 | `DATABASE_URL` | `...notification_db` | 분리된 DB |
 
-## 로컬 실행
+## 단위 테스트 (Task 1.5 검증)
+
+pytest 는 DB 없이도 통과:
 
 ```bash
 cd services/notification
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+pytest
+# 2 passed
+```
+
+## 로컬 실행 (e2e)
+
+postgres port-forward 가 먼저 필요:
+
+```bash
+# Terminal 0
+kubectl -n payment-dev port-forward svc/postgres 5432:5432
+```
+
+```bash
+cd services/notification
+source .venv/bin/activate
 export $(grep -v '^#' .env.example | xargs)
 uvicorn main:app --host 0.0.0.0 --port 8003 --reload
 ```
@@ -44,3 +62,6 @@ curl -s -X POST localhost:8003/send \
      -H 'content-type: application/json' \
      -d '{"payload":{"channel":"email","to":"u@example.com","body":"transfer-completed"}}'
 ```
+
+> port-forward 없이 빠르게 `/health` 만 보려면 `unset DATABASE_URL` 후 uvicorn 실행.
+> 관련 함정 기록: [`docs/troubleshooting/2026-05-04-uvicorn-cannot-reach-localhost-postgres.md`](../../docs/troubleshooting/2026-05-04-uvicorn-cannot-reach-localhost-postgres.md)

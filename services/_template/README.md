@@ -32,27 +32,55 @@
 | loan | `loan` | `apply` | 대출 신청 mock |
 | notification | `notification` | `send` | 알림 발송 mock |
 
-## 로컬 실행
+## 단위 테스트 (Task 1.5 의 검증 경로)
+
+pytest 는 lifespan 이 DB 풀 생성을 스킵하도록 `DATABASE_URL=""` 을 강제하므로
+**postgres 가 없어도 통과한다**. 이게 Task 1.5 의 정상 검증 경로.
 
 ```bash
 cd services/_template
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+pytest
+# 3 passed
+```
 
-# Postgres가 로컬에 떠 있어야 readiness 통과
+## 로컬 실행 (e2e 확인)
+
+uvicorn 으로 서비스를 실제 실행하려면 **postgres 가 필요**하다.
+postgres 는 kind 클러스터의 `payment-dev/postgres` 에서만 동작하므로,
+host 의 `localhost:5432` 로 보이도록 **port-forward 를 먼저 켠다**.
+
+### 1단계: postgres port-forward (별도 터미널, 4 서비스 공통)
+
+```bash
+# Terminal 0 — 실행 중 유지
+kubectl -n payment-dev port-forward svc/postgres 5432:5432
+# Forwarding from 127.0.0.1:5432 -> 5432
+```
+
+### 2단계: 서비스 실행
+
+```bash
+cd services/_template
+source .venv/bin/activate          # 위에서 만든 venv
 export $(grep -v '^#' .env.example | xargs)
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-검증:
+### 3단계: 검증
 
 ```bash
 curl -s localhost:8000/health         # {"status":"ok",...}
-curl -s localhost:8000/health/ready   # 200 if DB up, 503 otherwise
+curl -s localhost:8000/health/ready   # {"status":"ready",...}  ← port-forward 활성 시 200
 curl -s -X POST localhost:8000/process \
      -H 'content-type: application/json' \
      -d '{"payload":{"hello":"world"}}'
 ```
+
+> **port-forward 없이 `/health` 만 보고 싶다면** `unset DATABASE_URL` 후 uvicorn 실행.
+> lifespan 이 DB 분기를 스킵하고 readiness 만 503 으로 응답한다.
+> 관련 함정 기록: [`docs/troubleshooting/2026-05-04-uvicorn-cannot-reach-localhost-postgres.md`](../../docs/troubleshooting/2026-05-04-uvicorn-cannot-reach-localhost-postgres.md)
 
 ## 다음 단계
 

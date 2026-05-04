@@ -23,12 +23,30 @@
 | `DOMAIN_ACTION` | `apply` | POST /apply 라우트 |
 | `DATABASE_URL` | `...loan_db` | 분리된 DB |
 
-## 로컬 실행
+## 단위 테스트 (Task 1.5 검증)
+
+pytest 는 DB 없이도 통과:
 
 ```bash
 cd services/loan
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+pytest
+# 2 passed
+```
+
+## 로컬 실행 (e2e)
+
+postgres port-forward 가 먼저 필요:
+
+```bash
+# Terminal 0
+kubectl -n payment-dev port-forward svc/postgres 5432:5432
+```
+
+```bash
+cd services/loan
+source .venv/bin/activate
 export $(grep -v '^#' .env.example | xargs)
 uvicorn main:app --host 0.0.0.0 --port 8004 --reload
 ```
@@ -41,3 +59,6 @@ curl -s -X POST localhost:8004/apply \
      -H 'content-type: application/json' \
      -d '{"payload":{"customer_id":"c-1","amount":1000000,"term_months":24}}'
 ```
+
+> port-forward 없이 빠르게 `/health` 만 보려면 `unset DATABASE_URL` 후 uvicorn 실행.
+> 관련 함정 기록: [`docs/troubleshooting/2026-05-04-uvicorn-cannot-reach-localhost-postgres.md`](../../docs/troubleshooting/2026-05-04-uvicorn-cannot-reach-localhost-postgres.md)
