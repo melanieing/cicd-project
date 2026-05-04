@@ -57,7 +57,7 @@ spec:
     automated:
       prune: true       # 폴더에서 빠진 Application 매니페스트는 cluster 에서도 정리
       selfHeal: true
-      allowEmpty: false
+      # `allowEmpty: false` 는 default 라 명시하지 않음 (controller 가 normalize 해 떨어뜨림).
     syncOptions:
       - CreateNamespace=false   # argocd ns 는 helm install 시 이미 존재
       - ServerSideApply=true
