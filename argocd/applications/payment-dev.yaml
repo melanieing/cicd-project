@@ -1,0 +1,85 @@
+# argocd/applications/payment-dev.yaml
+#
+# Payment platform 의 dev 환경 ArgoCD Application.
+#
+# 역할
+#   - source: 본 repo 의 `charts/payment-platform` Helm chart + `values-dev.yaml`
+#   - destination: in-cluster `payment-dev` namespace
+#   - syncPolicy: automated + selfHeal (R-B3-O1 의 핵심 — git 변경이 곧 cluster 반영)
+#
+# 적용:
+#   kubectl apply -f argocd/applications/payment-dev.yaml
+#   argocd app get payment-dev
+#
+# 5.4 (sync 정책 차이) 의 dev 측. prod 는 같은 chart 를 manual sync 로 운영.
+# 5.3 의 root-app 이 본 매니페스트를 자동으로 apply 하므로, 단독 적용은 검증/디버깅용.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: payment-dev
+  namespace: argocd
+  # cascade delete: Application 삭제 시 sync 한 cluster 리소스도 정리
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    env: dev
+    app.kubernetes.io/part-of: payment-platform
+spec:
+  project: payment-platform
+
+  # ---------------------------------------------------------------------------
+  # source — 본 repo + Helm chart 경로 + dev values 파일
+  # ---------------------------------------------------------------------------
+  source:
+    repoURL: https://github.com/melanieing/cicd-project.git
+    # `targetRevision: main` — main 브랜치의 최신 commit 을 따라간다.
+    # GitOps 의 핵심: cluster 의 desired state 가 main 의 그 시점 코드.
+    targetRevision: main
+    path: charts/payment-platform
+    helm:
+      # values 파일 — chart 의 path 기준 상대경로
+      valueFiles:
+        - values-dev.yaml
+      # global.imageTag override — 본 chart 는 imageTag="" 시 fail() 로 abort 한다 (정책상 mutable tag 금지).
+      # 사용자는 GHCR UI 에서 최신 sha 를 복사 후 본 필드를 PR 로 갱신.
+      # EPIC 5 후속의 ArgoCD image updater 가 도입되면 본 필드를 자동 commit 으로 갱신 → 사용자 수작업 0.
+      parameters:
+        - name: global.imageTag
+          # 비워두면 fail() — install 직전 PR 로 채울 것.
+          # 일단은 EPIC 4 검증에 사용한 sha 로 시작 (commit 이력에 추적 가능하게).
+          value: "3b46c95b762d048e007c78669e5dd9b4b9e67e44"
+
+  # ---------------------------------------------------------------------------
+  # destination — in-cluster `payment-dev`
+  # ---------------------------------------------------------------------------
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: payment-dev
+
+  # ---------------------------------------------------------------------------
+  # syncPolicy — dev 는 자동 sync (R-B3-O1)
+  # ---------------------------------------------------------------------------
+  syncPolicy:
+    automated:
+      # prune: git 에서 사라진 리소스를 cluster 에서 삭제 (orphan 정리)
+      prune: true
+      # selfHeal: cluster drift (수동 kubectl edit 등) 을 git 상태로 자동 복구
+      selfHeal: true
+      # allowEmpty: 빈 application 도 sync 시도 (5.3 root-app 이 처음 떠올 때 안전)
+      allowEmpty: false
+    syncOptions:
+      # CreateNamespace=true: payment-dev namespace 가 없으면 ArgoCD 가 만든다
+      - CreateNamespace=true
+      # PrunePropagationPolicy=foreground: prune 시 dependent (e.g. Pods) 가 모두 정리된 다음 owner 제거
+      - PrunePropagationPolicy=foreground
+      # PruneLast=true: 모든 sync 적용 후 마지막에 prune (의존 리소스 누락 방지)
+      - PruneLast=true
+      # ServerSideApply=true: 큰 CRD/매니페스트의 metadata.annotations 크기 한계 회피
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

@@ -67,11 +67,11 @@
 
 | ID | 태스크 | R-ID | 산출물 |
 |---|---|---|---|
-| 5.1 | ArgoCD 설치 (Helm, namespace `argocd`) | B3-O1 | `argocd/install.md` |
-| 5.2 | `Application` (dev), `Application` (prod) 매니페스트 | B3-O1, B3-O2 | `argocd/applications/` |
-| 5.3 | App-of-Apps 패턴 적용 [★] | B3-O1 | `argocd/root-app.yaml` |
-| 5.4 | Auto-sync + self-heal (dev), 수동 sync (prod) | B3-O1 | Application spec |
-| 5.5 | GitHub Environment Protection (prod 승인자 강제) + Pending 화면 캡처 | B1-O2 | GitHub UI 설정 + 스크린샷 |
+| 5.1 | ArgoCD 설치 (Helm, namespace `argocd`) ✅ | B3-O1 | `argocd/install.md`, `argocd/values.yaml` |
+| 5.2 | `Application` (dev), `Application` (prod) 매니페스트 ✅ | B3-O1, B3-O2 | `argocd/applications/payment-{dev,prod}.yaml`, `argocd/projects/payment-platform.yaml` |
+| 5.3 | App-of-Apps 패턴 적용 [★] ✅ | B3-O1 | `argocd/root-app.yaml` |
+| 5.4 | Auto-sync + self-heal (dev), 수동 sync (prod) ✅ | B3-O1 | Application spec (5.2 매니페스트 내 `syncPolicy`) |
+| 5.5 | GitHub Environment Protection (prod 승인자 강제) ✅ 가이드 / 🟡 첫 워크플로 도달 후 Pending 화면 캡처 (cd.yml 도입 후) | B1-O2 | `docs/setup/github-environment-protection.md`, 스크린샷 (TBD) |
 
 ## EPIC 6 — 서비스 메시 (Istio) (Day 3 오후)
 
