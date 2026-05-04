@@ -19,7 +19,7 @@
 # =============================================================================
 # Stage 1) builder — 의존성을 venv 에 설치
 # =============================================================================
-FROM python:3.13-slim-bookworm AS builder
+FROM python:3.14-slim-bookworm AS builder
 
 # 빌드 작업 디렉토리. 이 stage 는 어차피 버려지므로 위치 자체는 자유.
 WORKDIR /build
@@ -51,7 +51,7 @@ RUN pip install --upgrade pip \
 # =============================================================================
 # Stage 2) runtime — 최소한의 실행 이미지
 # =============================================================================
-FROM python:3.13-slim-bookworm AS runtime
+FROM python:3.14-slim-bookworm AS runtime
 
 # OCI 표준 라벨. GHCR 등이 이 라벨을 보고 image ↔ source repo 를 자동 연결한다.
 LABEL org.opencontainers.image.source="https://github.com/melanieing/cicd-project" \
