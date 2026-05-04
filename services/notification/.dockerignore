@@ -1,0 +1,68 @@
+# build context 에서 제외할 파일 목록. .gitignore 와 비슷하게 동작하지만
+# Docker 가 image 를 만들 때 daemon 으로 보내는 tar 에서 빼는 게 목적이다.
+# 결과적으로 빌드 속도 ↑, 이미지 크기 ↓, 비밀키 등 우발 포함 ↓.
+
+# --- Python build artifacts (실행 중 자동 재생성됨) ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# --- 테스트/린트 캐시 (CI 가 image 빌드 전에 별도 단계에서 사용) ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# --- 가상환경 (host 에서만 의미 있음, 컨테이너는 /opt/venv 사용) ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- IDE / OS 메타 ---
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- 비밀/로컬 환경 (이미지에 절대 포함 금지) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# --- 테스트 코드 — 운영 image 에는 포함하지 않는다.
+# CI 가 image 빌드 전에 host 에서 pytest 를 돌려 검증하므로 컨테이너 안에는 불필요.
+tests/
+pytest.ini
+
+# --- 문서 / 메타 — 런타임에 필요 없음 ---
+README.md
+*.md
+
+# --- 로그 ---
+*.log
+logs/
+
+# --- Git ---
+.git/
+.gitignore
+.gitkeep
+
+# --- Docker meta (자기 참조 방지) ---
+Dockerfile*
+.dockerignore
+docker-compose*

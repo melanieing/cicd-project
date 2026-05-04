@@ -40,3 +40,4 @@ YYYY-MM-DD-<short-slug>.md
 | 날짜 | 파일 | 한 줄 요약 | 심각도 |
 |---|---|---|---|
 | 2026-05-03 | [postgres-l-truncated-by-tty-pager](2026-05-03-postgres-l-truncated-by-tty-pager.md) | `\l` 의 TTY pager 가 와이드 출력을 잘라 transfer_db 가 누락된 듯 보임 | 낮음 |
+| 2026-05-04 | [uvicorn-cannot-reach-localhost-postgres](2026-05-04-uvicorn-cannot-reach-localhost-postgres.md) | host 의 `localhost:5432` 는 비어 있어 uvicorn lifespan 이 timeout. `kubectl port-forward` 로 해결 | 낮음 |

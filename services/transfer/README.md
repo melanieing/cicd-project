@@ -53,12 +53,30 @@ notification 호출이 **실패하거나 타임아웃**되어도 transfer 자체
 | `NOTIFICATION_URL` | `http://...:8003` | 호출 대상 base URL |
 | `NOTIFICATION_TIMEOUT` | `2.0` | 호출 타임아웃(초). 기본 2초 |
 
-## 로컬 실행
+## 단위 테스트 (Task 1.5 검증)
 
-먼저 다른 터미널에서 notification 서비스부터 띄운다.
+pytest 는 DATABASE_URL="" / NOTIFICATION_URL="" 로 graceful skip 분기까지 검증.
+postgres·notification 어느 쪽도 없어도 통과:
 
 ```bash
-# Terminal 1 - notification (포트 8003)
+cd services/transfer
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+pytest
+# 2 passed (test_health_returns_ok, test_transfer_action_skips_notification_when_url_unset)
+```
+
+## 로컬 실행 (e2e)
+
+3개 터미널 필요. postgres port-forward + notification + transfer.
+
+```bash
+# Terminal 0 — postgres port-forward (4 서비스 공통, 실행 중 유지)
+kubectl -n payment-dev port-forward svc/postgres 5432:5432
+```
+
+```bash
+# Terminal 1 — notification (포트 8003)
 cd services/notification
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -67,13 +85,16 @@ uvicorn main:app --host 0.0.0.0 --port 8003 --reload
 ```
 
 ```bash
-# Terminal 2 - transfer (포트 8002)
+# Terminal 2 — transfer (포트 8002)
 cd services/transfer
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 export $(grep -v '^#' .env.example | xargs)
 uvicorn main:app --host 0.0.0.0 --port 8002 --reload
 ```
+
+> port-forward 없이 빠르게 보려면 두 터미널 모두 `unset DATABASE_URL` 후 실행.
+> 관련 함정 기록: [`docs/troubleshooting/2026-05-04-uvicorn-cannot-reach-localhost-postgres.md`](../../docs/troubleshooting/2026-05-04-uvicorn-cannot-reach-localhost-postgres.md)
 
 ## 검증
 
