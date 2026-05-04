@@ -24,11 +24,14 @@ data:
   DOMAIN_ACTION: {{ $svc.domainAction | quote }}
   # transfer 만 notification 호출. 나머지 service 는 빈 값으로 graceful skip.
   # 'from-template' sentinel 을 만나면 cluster DNS 로 변환.
-  {{- if eq $svc.notificationUrl "from-template" }}
-  NOTIFICATION_URL: {{ printf "http://notification.%s.svc.cluster.local:8000" $.Release.Namespace | quote }}
-  {{- else }}
-  NOTIFICATION_URL: {{ $svc.notificationUrl | quote }}
+  #
+  # IDE/YAML linter 가 if/else 분기를 이해 못 하므로 키 중복으로 false-positive 를 내지 않도록
+  # 변수에 먼저 결과를 모은 뒤 단일 라인으로 출력한다.
+  {{- $notifUrl := $svc.notificationUrl -}}
+  {{- if eq $svc.notificationUrl "from-template" -}}
+    {{- $notifUrl = printf "http://notification.%s.svc.cluster.local:8000" $.Release.Namespace -}}
   {{- end }}
+  NOTIFICATION_URL: {{ $notifUrl | quote }}
   # 공통 env (4 service 동일).
   LOG_LEVEL: {{ $g.env.LOG_LEVEL | quote }}
   DB_POOL_MIN: {{ $g.env.DB_POOL_MIN | quote }}
