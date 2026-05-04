@@ -6,9 +6,10 @@
 
 import os
 
-os.environ.setdefault("SERVICE_NAME", "loan")
-os.environ.setdefault("DOMAIN_ACTION", "apply")
-os.environ.setdefault("DATABASE_URL", "")
+# 테스트 격리를 위해 강제 할당. 자세한 근거는 _template/tests/test_main.py 헤더 참조.
+os.environ["SERVICE_NAME"] = "loan"
+os.environ["DOMAIN_ACTION"] = "apply"
+os.environ["DATABASE_URL"] = ""
 
 from fastapi.testclient import TestClient  # noqa: E402
 from main import app  # noqa: E402

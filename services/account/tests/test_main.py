@@ -6,9 +6,11 @@
 
 import os
 
-os.environ.setdefault("SERVICE_NAME", "account")
-os.environ.setdefault("DOMAIN_ACTION", "open")
-os.environ.setdefault("DATABASE_URL", "")
+# 테스트 격리를 위해 강제 할당. 셸에 어떤 값이 export 되어 있어도 무시.
+# 자세한 근거는 services/_template/tests/test_main.py 헤더 참조.
+os.environ["SERVICE_NAME"] = "account"
+os.environ["DOMAIN_ACTION"] = "open"
+os.environ["DATABASE_URL"] = ""
 
 from fastapi.testclient import TestClient  # noqa: E402
 from main import app  # noqa: E402

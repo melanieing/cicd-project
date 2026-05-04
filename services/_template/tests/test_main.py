@@ -21,17 +21,23 @@
 [테스트 환경 변수 처리]
   main.py 는 모듈 import 시점에 환경변수를 읽어 모듈 레벨 상수로 박는다.
   따라서 `from main import app` 보다 먼저 환경변수를 설정해야 한다.
-  os.environ.setdefault 는 이미 설정된 값을 덮어쓰지 않는 안전한 형태
-  (CI 에서 외부 주입된 값을 존중).
 
-  DATABASE_URL="" 로 두면 lifespan 이 DB 풀 생성을 스킵해 postgres 없이도 테스트 가능.
+  ## 왜 setdefault 가 아니라 직접 할당인가
+  본래 setdefault 로 두면 "외부에서 주입된 값을 존중" 하는 유연성이 있다.
+  그러나 본 테스트들은 셸 환경의 영향을 받지 않아야 한다 (격리·결정성).
+  사용자가 e2e 검증을 위해 직전에 `export DATABASE_URL=...localhost:5432...` 를
+  실행한 상태로 pytest 를 돌리면, setdefault 가 그 값을 보존해 lifespan 이
+  닿지 않는 5432 에 connect 시도하다 timeout 으로 실패한다.
+  따라서 모든 테스트 환경변수는 **직접 할당으로 강제 덮어쓰기**한다.
+  실 사례 기록: docs/troubleshooting/2026-05-04-uvicorn-cannot-reach-localhost-postgres.md
 """
 
 import os
 
-os.environ.setdefault("SERVICE_NAME", "template")
-os.environ.setdefault("DOMAIN_ACTION", "process")
-os.environ.setdefault("DATABASE_URL", "")
+# 테스트 격리를 위해 강제 할당. 셸에 어떤 값이 export 되어 있어도 무시.
+os.environ["SERVICE_NAME"] = "template"
+os.environ["DOMAIN_ACTION"] = "process"
+os.environ["DATABASE_URL"] = ""
 
 # 환경변수 설정 후 main.py 를 import. 순서가 바뀌면 기본값으로 모듈이 초기화됨.
 from fastapi.testclient import TestClient  # noqa: E402  (intentional late import)
