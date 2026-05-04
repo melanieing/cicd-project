@@ -50,7 +50,7 @@
 | 3.3 | Docker Buildx + GHCR 푸시 (`git-sha` 태그) ✅ | B1-M2, B2-M2 | 동일 워크플로 |
 | 3.4 | Trivy 이미지 스캔 (HIGH/CRITICAL 차단) ✅ | B2-M3 | 동일 워크플로 |
 | 3.5 | Trivy 결과 PR 코멘트 자동 게시 ✅ + 실제 PR 캡처 🟡 (PR 한 건 후) | B2-O1 | 동일 워크플로, 스크린샷 |
-| 3.6 | Slack `#deploy-status` 성공/실패 알림 ✅ + Webhook secret 등록 🟡 (사용자 작업) | B1-M3 | 동일 워크플로 + Repo Secret |
+| 3.6 | Slack `#deploy-status` 성공/실패 알림 ✅ + Webhook secret 등록 ✅ + 실제 알림 도착 확인 | B1-M3 | 동일 워크플로 + Repo Secret |
 
 ## EPIC 4 — Helm & K8s 배포 (Day 2 오후)
 
