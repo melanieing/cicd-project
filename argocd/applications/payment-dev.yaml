@@ -66,8 +66,9 @@ spec:
       prune: true
       # selfHeal: cluster drift (수동 kubectl edit 등) 을 git 상태로 자동 복구
       selfHeal: true
-      # allowEmpty: 빈 application 도 sync 시도 (5.3 root-app 이 처음 떠올 때 안전)
-      allowEmpty: false
+      # NOTE: `allowEmpty: false` 는 default 라 명시하지 않는다.
+      # ArgoCD controller 가 default 값을 normalize 해 떨어뜨리므로, git 에 명시하면
+      # root Application 의 diff 가 영구적으로 발생 (LIVE 에는 필드 없음 vs DESIRED 에는 있음).
     syncOptions:
       # CreateNamespace=true: payment-dev namespace 가 없으면 ArgoCD 가 만든다
       - CreateNamespace=true

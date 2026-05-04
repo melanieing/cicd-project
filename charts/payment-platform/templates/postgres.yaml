@@ -181,7 +181,12 @@ spec:
           configMap:
             name: postgres-init
   volumeClaimTemplates:
-    - metadata:
+    # apiVersion/kind 는 K8s API 서버가 PVC 임베디드 객체에 자동 주입하는 TypeMeta.
+    # 명시하지 않으면 ArgoCD diff 가 "git 없음 / cluster 있음" 으로 영구 OutOfSync 표시.
+    # See: docs/troubleshooting/2026-05-04-argocd-postgres-volumeclaimtemplates-typemeta-drift.md
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
       spec:
         accessModes: ["ReadWriteOnce"]
