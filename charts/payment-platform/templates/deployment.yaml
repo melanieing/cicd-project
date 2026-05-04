@@ -52,6 +52,11 @@ spec:
         app.kubernetes.io/component: {{ $name }}
     spec:
       serviceAccountName: {{ $g.serviceAccountName }}
+      # GHCR 가 private 일 때만 의미. public 이면 imagePullSecrets 는 빈 리스트라 렌더 안 됨.
+      {{- with $g.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         {{- toYaml $g.podSecurityContext | nindent 8 }}
       containers:

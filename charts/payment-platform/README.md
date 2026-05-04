@@ -20,6 +20,29 @@ charts/payment-platform/
     └── postgres.yaml       Secret + ConfigMap + 2 Service + StatefulSet
 ```
 
+## 사전 점검 (외부 상태)
+
+chart 가 cluster 안에서 잘 떠도 **외부 시스템(GHCR)** 의 상태가 안 맞으면 pod 가 ImagePullBackOff 됨.
+첫 install 전에 다음 3 가지를 모두 확인:
+
+1. **`:latest` 태그 존재 여부**
+   `.github/workflows/ci.yml` 의 push step 이 `:latest` 를 함께 push 하므로
+   **main 브랜치에 service 코드를 한 번이라도 push** 한 적 있어야 함.
+   확인: `https://github.com/users/melanieing/packages/container/account/versions`
+   에서 `latest` 라벨이 보이는지.
+
+2. **GHCR 패키지 가시성**
+   default 는 private. K8s 가 인증 없이 pull 하려면 public 으로 전환:
+   - `https://github.com/users/melanieing/packages/container/<name>/settings`
+   - 하단 Danger Zone → Change visibility → Public
+   - 4 패키지(account, transfer, loan, notification) 모두 동일 처리
+
+3. **(선택) imagePullSecret**
+   private 으로 유지하려면 PAT 발급 후 `kubectl create secret docker-registry`
+   로 등록하고 values 의 `global.imagePullSecrets` 채우기. values.yaml 의 인라인 주석 참조.
+
+확인 후 ImagePullBackOff 가 발생하면: [`docs/troubleshooting/2026-05-04-helm-install-imagepullbackoff-latest-tag.md`](../../docs/troubleshooting/2026-05-04-helm-install-imagepullbackoff-latest-tag.md)
+
 ## Quickstart
 
 ### Fresh install (kind cluster, dev)
