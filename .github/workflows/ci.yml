@@ -67,14 +67,14 @@ jobs:
       has-changes: ${{ steps.matrix.outputs.has-changes }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # path filter — 4 service 디렉토리 + 공유 영역(workflow / _template) 변경 여부를 boolean 으로 노출.
       # workflow / _template 는 4 service 모두에 영향을 주는 "공유 변경" 이므로 별도 필터로 두고
       # 다음 step 에서 전체 service 매트릭스 트리거에 사용한다.
       - name: Path filter
         id: filter
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             workflow: '.github/workflows/**'
@@ -148,12 +148,12 @@ jobs:
         service: ${{ fromJSON(needs.changes.outputs.services) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Python 버전은 Dockerfile 의 FROM 라인과 같은 메이저·마이너로 맞춘다.
       # Dependabot 이 Dockerfile 을 bump 하면 여기도 같이 bump 해야 한다.
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.14'
           cache: pip
@@ -198,7 +198,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # short-sha 와 image ref 환경변수로 한 번 계산해서 step 간 재사용.
       - name: Compute image refs
@@ -216,11 +216,11 @@ jobs:
 
       # Buildx 세팅 — multi-platform 빌드와 GHA cache 백엔드 사용을 위해 필요.
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # GHCR 로그인 (push 시점에만 의미. PR 이벤트에서도 로그인 자체는 안전함)
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -229,7 +229,7 @@ jobs:
       # 빌드 1회 — load:true 로 로컬 daemon 에 적재. push 는 별도 step 에서 분기.
       # cache-from/to 로 GHA 의 cache 백엔드를 사용 → 같은 service 의 다음 빌드가 빨라짐.
       - name: Build image (load to local daemon)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: services/${{ matrix.service }}
           load: true
@@ -293,7 +293,7 @@ jobs:
       # 코멘트를 매번 생성하지 않고 update 하므로 PR 이 코멘트로 도배되지 않는다.
       - name: Comment Trivy results on PR
         if: github.event_name == 'pull_request'
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: trivy-${{ matrix.service }}
           path: trivy-${{ matrix.service }}.txt
@@ -310,7 +310,7 @@ jobs:
       # 같은 build context 를 다시 빌드하지만 cache 가 모두 hit 되므로 사실상 push 만 수행됨.
       - name: Push to GHCR (main only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: services/${{ matrix.service }}
           push: true
@@ -375,7 +375,7 @@ jobs:
         if: env.SLACK_WEBHOOK_URL != ''
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        uses: slackapi/slack-github-action@v2
+        uses: slackapi/slack-github-action@v3
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
