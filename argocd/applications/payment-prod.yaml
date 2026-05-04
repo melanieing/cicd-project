@@ -1,0 +1,69 @@
+# argocd/applications/payment-prod.yaml
+#
+# Payment platform 의 prod 환경 ArgoCD Application.
+#
+# 역할 — dev 와의 차이
+#   - values 파일: values-prod.yaml (HPA on, replicas 2~10, beefier resources, 별도 password)
+#   - destination namespace: payment-prod
+#   - syncPolicy: automated 블록 부재 → **수동 sync 만** (R-B3-O1, R-B1-O2 의 prod 승인 게이트와 결합)
+#
+# 운영 가정
+#   1. 개발자는 PR 머지로 dev 에 변경을 흘린다 (자동 sync).
+#   2. dev 에서 검증된 commit sha 를 본 매니페스트의 `parameters.global.imageTag` 에 PR 로 반영.
+#   3. PR 머지 후, ArgoCD UI 또는 `argocd app sync payment-prod` 로 사람이 명시적으로 sync 트리거.
+#   4. prod sync 직전에는 5.5 의 GitHub Environment protection rule 로 reviewer 1 명 승인 필요
+#      (실제 게이트 위치는 GitHub Actions deploy job 이지만, 본 Application 의 manual-sync 또한 운영자 손을 거친다).
+#
+# 5.5 와의 관계
+#   GitHub Environment 의 reviewer 강제는 "코드가 prod 에 도달하기 전 사람의 결정" 을 요구.
+#   ArgoCD 의 manual sync 는 "그 결정 후에도 cluster 에 반영하는 시점" 을 따로 분리.
+#   둘 다 있어야 prod 의 변경 흐름이 안전.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: payment-prod
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    env: prod
+    app.kubernetes.io/part-of: payment-platform
+spec:
+  project: payment-platform
+
+  source:
+    repoURL: https://github.com/melanieing/cicd-project.git
+    targetRevision: main
+    path: charts/payment-platform
+    helm:
+      valueFiles:
+        - values-prod.yaml
+      parameters:
+        - name: global.imageTag
+          # prod 도 mutable tag 정책상 sha 명시 필수.
+          # dev 와 동일 sha 로 출발하나, 운영 흐름은 "dev 에서 N 시간 검증된 sha 만 prod 로 승격" 이 정석.
+          value: "3b46c95b762d048e007c78669e5dd9b4b9e67e44"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: payment-prod
+
+  # ---------------------------------------------------------------------------
+  # syncPolicy — prod 는 수동 (automated 블록 부재가 핵심)
+  # ---------------------------------------------------------------------------
+  # automated 가 없으면 ArgoCD 는 OutOfSync 만 표시하고 sync 는 안 한다.
+  # 운영자가 UI 의 "Sync" 버튼 또는 `argocd app sync payment-prod` 로 수동 트리거.
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      # PrunePropagationPolicy=foreground: prod 에서도 prune 안전 우선.
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

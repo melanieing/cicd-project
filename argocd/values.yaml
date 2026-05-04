@@ -1,0 +1,142 @@
+# charts/argo-cd 9.5.11 (2026-04 stable) 의 override values.
+#
+# 본 파일의 목적
+#   - 16GB RAM kind 환경에서 ArgoCD 가 무리 없이 떠 있을 만한 경량 설정
+#   - 본 프로젝트가 single-cluster (in-cluster `https://kubernetes.default.svc`) GitOps 만 시연하므로
+#     HA 구성은 의도적으로 끔 (controller/repo-server/server replicas=1)
+#   - server 는 localhost port-forward 로 접근 → TLS 비활성화 (`--insecure`)
+#   - dex/SSO 비활성: 포트폴리오 데모용으로 admin 단일 계정만 사용
+#
+# 적용:
+#   helm repo add argo https://argoproj.github.io/argo-helm
+#   helm repo update
+#   helm upgrade --install argocd argo/argo-cd --version 9.5.11 \
+#        -n argocd --create-namespace -f argocd/values.yaml
+#
+# 운영 환경의 차이
+#   prod 에서는 controllerHA + redis-ha + dex (OIDC) + cert-manager 발급 TLS 가 정석.
+#   본 chart 도 그 옵션이 모두 있으므로 EPIC 5 이후 확장 시 재사용 가능.
+
+# -----------------------------------------------------------------------------
+# 전역 — image registry, label, securityContext 등의 공통 베이스
+# -----------------------------------------------------------------------------
+global:
+  # ArgoCD 공식 이미지는 quay.io. mirroring 이슈 시에만 변경.
+  image:
+    repository: quay.io/argoproj/argocd
+    # tag 는 chart version (9.5.11) 이 강제하는 ArgoCD release 와 정합 — 비움으로써 chart 가 결정하도록.
+    tag: ""
+
+# -----------------------------------------------------------------------------
+# Application Controller — Application reconcile 루프의 핵심
+# -----------------------------------------------------------------------------
+controller:
+  # HA 구성을 끔 (kind 단일 노드 + 16GB RAM 환경)
+  replicas: 1
+  # reconcile 빈도: 기본 180s. 데모에서 git push 후 빠르게 보고 싶다면 30~60s 도 가능.
+  # 단, 본 프로젝트는 webhook 도 같이 쓰는 게 정석이라 기본값 유지.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# -----------------------------------------------------------------------------
+# Repo Server — Git clone + Helm/Kustomize render 를 담당
+# -----------------------------------------------------------------------------
+repoServer:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# -----------------------------------------------------------------------------
+# ArgoCD Server — Web UI / gRPC API
+# -----------------------------------------------------------------------------
+server:
+  replicas: 1
+  # 본 프로젝트는 localhost port-forward 로 UI 접근 → TLS 가 오히려 self-signed 경고로 방해.
+  # `--insecure` 는 ArgoCD server 가 plain HTTP 로 listen 하게 한다.
+  # prod 에서는 cert-manager + Ingress 로 정식 TLS 종단 후 이 플래그 제거.
+  extraArgs:
+    - --insecure
+  service:
+    # ClusterIP — 외부 노출은 port-forward 로 처리 (kind 환경 단순화)
+    type: ClusterIP
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# -----------------------------------------------------------------------------
+# Redis — controller/server 의 캐시 백엔드
+# -----------------------------------------------------------------------------
+redis:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# Redis HA (sentinel) 는 끔 — 단일 redis 면 충분
+redis-ha:
+  enabled: false
+
+# -----------------------------------------------------------------------------
+# Dex (SSO) — 본 데모는 admin 단일 계정으로만 사용하므로 비활성
+# -----------------------------------------------------------------------------
+dex:
+  enabled: false
+
+# -----------------------------------------------------------------------------
+# ApplicationSet Controller — App-of-Apps 와 별개로 동적 application 생성을 위한 컨트롤러.
+# 본 프로젝트는 정적 Application 매니페스트만 사용하므로 일단 활성만 유지 (리소스 매우 작음).
+# -----------------------------------------------------------------------------
+applicationSet:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# -----------------------------------------------------------------------------
+# Notifications Controller — Slack/Email 알림. 본 프로젝트는 CI 의 Slack 만 사용 → 비활성.
+# -----------------------------------------------------------------------------
+notifications:
+  enabled: false
+
+# -----------------------------------------------------------------------------
+# 설정 — RBAC default policy, repo credential 자리 등
+# -----------------------------------------------------------------------------
+configs:
+  # admin 비활성화하지 않음 (포트폴리오 데모) — prod 에서는 SSO 도입 후 admin disable 권장
+  cm:
+    # ArgoCD UI 의 application 표기에 들어갈 cluster 별명
+    server.rbac.log.enforce.enable: "false"
+    # exec 권한 (kubectl exec via UI) — 데모 편의를 위해 enable
+    exec.enabled: "true"
+    # 본 repo 가 origin 이므로 timeout 여유롭게
+    timeout.reconciliation: 180s
+
+  params:
+    # server 가 위에서 `--insecure` 로 떠 있으므로 client 도 insecure 로 통신
+    server.insecure: true
+
+  # 본 chart 는 default password 를 자동 생성한다 (Secret `argocd-initial-admin-secret`).
+  # 별도 hash override 를 하지 않으면 install.md 의 retrieval 명령으로 받아 쓰면 된다.

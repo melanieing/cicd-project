@@ -1,0 +1,70 @@
+# argocd/projects/payment-platform.yaml
+#
+# AppProject — 본 프로젝트에 속하는 Application 들이 어떤 source repo / 어떤 destination cluster·namespace /
+# 어떤 K8s 리소스 종류만 다룰 수 있는지를 강제하는 RBAC + scope 객체.
+#
+# 왜 분리하나
+#   ArgoCD 는 default 로 `default` AppProject 를 생성한다 (모든 source/dest 허용).
+#   포트폴리오 차원에서는 "이 프로젝트 전용 Project 로 격리한다" 가 운영 규칙을 시연하는 산출물이다.
+#   prod 사고를 가정해 봤을 때, 잘못된 Application 이 `kube-system` 같은 곳에 sync 하는 사고를 막는 1 차 가드.
+#
+# 적용:
+#   kubectl apply -f argocd/projects/payment-platform.yaml
+#   argocd proj list   # payment-platform 이 출력되는지 확인
+
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: payment-platform
+  namespace: argocd
+  # ArgoCD 가 Application 을 제거할 때 함께 정리되도록 finalizer 부여
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: |
+    Payment platform (account / transfer / loan / notification) GitOps project.
+    EPIC 5 산출물. dev/prod 두 Application 이 본 Project 에 소속된다.
+
+  # ---------------------------------------------------------------------------
+  # sourceRepos — 이 Project 의 Application 이 참조할 수 있는 git repo whitelist
+  # ---------------------------------------------------------------------------
+  # 본 repo 만 허용. 외부 helm repo (예: bitnami) 가 필요해지면 그 URL 을 추가.
+  sourceRepos:
+    - https://github.com/melanieing/cicd-project.git
+    - https://github.com/melanieing/cicd-project   # .git 없는 형태도 허용 (UI 입력 호환)
+
+  # ---------------------------------------------------------------------------
+  # destinations — Application 이 sync 할 수 있는 cluster + namespace 조합 whitelist
+  # ---------------------------------------------------------------------------
+  # `https://kubernetes.default.svc` 는 in-cluster (ArgoCD 자신이 떠 있는 클러스터).
+  # namespace 는 dev/prod 만 허용 → kube-system / argocd 자체에 잘못 sync 되는 사고 방지.
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: payment-dev
+    - server: https://kubernetes.default.svc
+      namespace: payment-prod
+
+  # ---------------------------------------------------------------------------
+  # 어떤 K8s 리소스 종류를 다룰 수 있나
+  # ---------------------------------------------------------------------------
+  # cluster-scoped (예: ClusterRole) 은 본 Project 에서 생성하지 않을 것 → 빈 whitelist
+  # 만약 NetworkPolicy 도 막고 싶다면 namespaceResourceWhitelist 를 좁혀서 사용.
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: "*"
+    - group: "apps"
+      kind: "*"
+    - group: "autoscaling"     # HPA
+      kind: "*"
+    - group: "networking.k8s.io"
+      kind: "*"
+    - group: "policy"
+      kind: "*"
+
+  # ---------------------------------------------------------------------------
+  # 역할 (RBAC) — UI 와 API 에 대한 권한.
+  # 본 데모는 admin 단일 계정만 쓰므로 별도 role 없이 default 동작.
+  # SSO 도입 시 group → role 매핑을 여기에 추가하는 것이 표준.
+  # ---------------------------------------------------------------------------
+  roles: []

@@ -1,0 +1,69 @@
+# argocd/root-app.yaml
+#
+# App-of-Apps 패턴의 진입점 (★ 포트폴리오 가산 산출물).
+#
+# 패턴 설명
+#   - "root" Application 하나가 본 repo 의 `argocd/applications/` 폴더와 `argocd/projects/` 폴더를 sync.
+#   - 그 안의 매니페스트들은 또 다른 Application / AppProject 들이라, root 가 sync 되면 ArgoCD 가 그것들을
+#     자동으로 인지하고 각자 자신의 destination 에 sync 한다.
+#   - 결과: 사용자는 root 1 개만 `kubectl apply` 하면 된다. 이후 새 Application 추가도 git commit 으로 끝.
+#
+# 왜 가치 있나 (포트폴리오 시연 포인트)
+#   1. 매니페스트 자체가 git 안에 있고 ArgoCD 가 동적으로 발견 → "선언적 GitOps" 의 가장 짙은 형태
+#   2. dev/prod 외에 새 환경 (예: staging) 추가 시 `argocd/applications/` 에 한 파일 commit 만 하면 자동 등록
+#   3. ArgoCD 자체의 응급 재설치 시 root 한 줄로 전체 GitOps 토폴로지 복원
+#
+# 적용
+#   설치 절차의 마지막 한 줄:
+#     kubectl apply -f argocd/root-app.yaml
+#   이후 ArgoCD UI 의 Applications 탭에 root → payment-platform(project) → payment-dev / payment-prod 가
+#   계층적으로 보인다.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    role: root
+spec:
+  # root 는 default project 에 둔다 — payment-platform AppProject 자체를 만드는 매니페스트가
+  # `argocd/projects/` 안에 있기 때문. AppProject 가 없는 상태에서 root 가 그 project 에 묶이려 하면 chicken-and-egg.
+  project: default
+
+  source:
+    repoURL: https://github.com/melanieing/cicd-project.git
+    targetRevision: main
+    # `path: argocd` — argocd/ 디렉토리 전체. ArgoCD 의 directory 모드가 그 안의 모든 .yaml 을 apply.
+    path: argocd
+    directory:
+      # 재귀적으로 하위 폴더(applications/, projects/) 도 포함
+      recurse: true
+      # 본 root-app.yaml 자체와 README/values 를 제외 (자기 자신을 sync 하면 noop 이라도 헷갈림)
+      exclude: "{root-app.yaml,values.yaml,install.md,README.md}"
+
+  destination:
+    server: https://kubernetes.default.svc
+    # AppProject 와 Application 모두 ArgoCD 자신의 namespace 에 산다
+    namespace: argocd
+
+  # ---------------------------------------------------------------------------
+  # syncPolicy — root 는 자동 sync (git 에 새 Application 추가하면 즉시 등록)
+  # ---------------------------------------------------------------------------
+  syncPolicy:
+    automated:
+      prune: true       # 폴더에서 빠진 Application 매니페스트는 cluster 에서도 정리
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=false   # argocd ns 는 helm install 시 이미 존재
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
