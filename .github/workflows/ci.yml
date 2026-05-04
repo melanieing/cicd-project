@@ -1,0 +1,335 @@
+# .github/workflows/ci.yml
+#
+# EPIC 3 — CI 파이프라인 통합 워크플로.
+#
+# 본 파일 하나가 다음 7 개 태스크를 모두 담당한다:
+#   3.0 단위 테스트 선행      (R-B1-M2)
+#   3.1 path filter 변경 감지 (R-B1-M2)
+#   3.2 4잡 매트릭스 병렬 빌드 (R-B1-O1)
+#   3.3 Buildx + GHCR 푸시    (R-B1-M2, R-B2-M2)
+#   3.4 Trivy HIGH/CRITICAL 차단 (R-B2-M3)
+#   3.5 Trivy 결과 PR 코멘트  (R-B2-O1)
+#   3.6 Slack 알림            (R-B1-M3)
+#
+# 트리거 정책:
+#   - push to main         : 전체 파이프라인. test 통과 → build/scan → GHCR push → Slack
+#   - pull_request to main : test + build + scan + PR 코멘트. **GHCR push 안 함** (PR 단계에서 image 가 외부에 노출되면 안 됨)
+#   - workflow_dispatch    : 수동 트리거 (디버깅·강제 재실행용)
+#
+# 권한:
+#   contents: read       → 코드 읽기
+#   packages: write      → GHCR push
+#   pull-requests: write → Trivy 결과를 PR 코멘트로 작성
+#   actions: read        → workflow 자체 메타정보 (선택)
+#
+# 액션 버전 정책:
+#   - first-party (actions/*) : 메이저 버전 핀 (`@v5`) - GitHub 자체 유지보수
+#   - third-party             : 보안 이슈 가능성 → SHA 핀이 이상적 (Dependabot 가 주간 갱신)
+#                                현재는 가독성·디버깅 편의로 release tag 사용. 보안 강화 시 SHA 핀 권장.
+#   - aquasecurity/trivy-action : 2026-03 공급망 사건 대응으로 0.36.0+ 만 사용 (docs/tech-stack-versions.md 참조)
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# 같은 브랜치에 새 push 가 들어오면 진행 중이던 워크플로를 자동 취소.
+# CI 비용·노이즈 절감용. main 브랜치는 cancel 안 함 (history 보존).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+  packages: write
+  pull-requests: write
+
+jobs:
+  # =========================================================================
+  # Job 1) changes — path filter 로 변경된 service 식별
+  # =========================================================================
+  # dorny/paths-filter 가 base branch (main) 와 비교해 어떤 service 디렉토리가
+  # 바뀌었는지 boolean 으로 출력한다. 그 출력을 모아 JSON 배열로 변환,
+  # 후속 잡의 matrix 에 주입한다.
+  #
+  # 결과:
+  #   needs.changes.outputs.services    : 예) '["account","transfer"]'
+  #   needs.changes.outputs.has-changes : 'true' / 'false'
+  changes:
+    name: Detect changed services
+    runs-on: ubuntu-24.04
+    outputs:
+      services: ${{ steps.matrix.outputs.services }}
+      has-changes: ${{ steps.matrix.outputs.has-changes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # path filter — 4 service 디렉토리 변경 여부를 boolean 으로 노출
+      - name: Path filter
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            account: 'services/account/**'
+            transfer: 'services/transfer/**'
+            loan: 'services/loan/**'
+            notification: 'services/notification/**'
+
+      # 변경된 service 들을 JSON 배열로 정리. matrix 에 그대로 주입 가능한 형태.
+      - name: Build matrix array
+        id: matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          arr='[]'
+          # filter 출력은 'true'/'false' 문자열. true 인 service 만 배열에 추가.
+          [[ "${{ steps.filter.outputs.account }}" == "true" ]] \
+            && arr=$(echo "$arr" | jq -c '. + ["account"]')
+          [[ "${{ steps.filter.outputs.transfer }}" == "true" ]] \
+            && arr=$(echo "$arr" | jq -c '. + ["transfer"]')
+          [[ "${{ steps.filter.outputs.loan }}" == "true" ]] \
+            && arr=$(echo "$arr" | jq -c '. + ["loan"]')
+          [[ "${{ steps.filter.outputs.notification }}" == "true" ]] \
+            && arr=$(echo "$arr" | jq -c '. + ["notification"]')
+          echo "services=$arr" >> "$GITHUB_OUTPUT"
+          if [[ "$arr" == "[]" ]]; then
+            echo "has-changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-changes=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Detected services: $arr"
+
+  # =========================================================================
+  # Job 2) test — service 별 pytest (R-B1-M2 단위 테스트 게이트)
+  # =========================================================================
+  # build 보다 먼저 실행되어, 테스트 실패 시 build/scan/push 가 모두 차단된다.
+  # matrix 로 변경된 service 만 병렬 실행 (fail-fast=false 라 한 service 실패가 나머지를 죽이지 않음).
+  test:
+    name: Test (${{ matrix.service }})
+    needs: changes
+    if: needs.changes.outputs.has-changes == 'true'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.changes.outputs.services) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Python 버전은 Dockerfile 의 FROM 라인과 같은 메이저·마이너로 맞춘다.
+      # Dependabot 이 Dockerfile 을 bump 하면 여기도 같이 bump 해야 한다.
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: services/${{ matrix.service }}/requirements.txt
+
+      - name: Install deps
+        working-directory: services/${{ matrix.service }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # pytest 실행. 환경변수 강제 할당 패턴은 services/_template/tests/test_main.py
+      # 헤더 참조 (셸 환경 오염 방지).
+      - name: Run pytest
+        working-directory: services/${{ matrix.service }}
+        run: pytest --tb=short -v
+
+  # =========================================================================
+  # Job 3) build-scan-push — Docker 빌드 + Trivy 스캔 + GHCR push
+  # =========================================================================
+  # 흐름:
+  #   1) docker build (load: true) → 로컬 daemon 에 image 적재
+  #   2) Trivy scan #1 (gate)        → HIGH/CRITICAL 발견 시 exit-code=1 로 잡 실패
+  #   3) Trivy scan #2 (full report) → PR 코멘트용 (PR 이벤트일 때만)
+  #   4) PR 코멘트 등록              → marocchino/sticky-pull-request-comment
+  #   5) GHCR push                  → main 브랜치 push 이벤트일 때만
+  #
+  # buildx + cache-from/to 로 layer 캐시를 재사용하여 빌드 시간을 단축.
+  build-scan-push:
+    name: Build / Scan / Push (${{ matrix.service }})
+    needs: [changes, test]
+    if: needs.changes.outputs.has-changes == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.changes.outputs.services) }}
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # short-sha 와 image ref 환경변수로 한 번 계산해서 step 간 재사용.
+      - name: Compute image refs
+        id: refs
+        shell: bash
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          IMAGE="ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}"
+          {
+            echo "short_sha=$SHORT_SHA"
+            echo "image=$IMAGE"
+            echo "tag_full=$IMAGE:${{ github.sha }}"
+            echo "tag_short=$IMAGE:sha-$SHORT_SHA"
+          } >> "$GITHUB_OUTPUT"
+
+      # Buildx 세팅 — multi-platform 빌드와 GHA cache 백엔드 사용을 위해 필요.
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # GHCR 로그인 (push 시점에만 의미. PR 이벤트에서도 로그인 자체는 안전함)
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 빌드 1회 — load:true 로 로컬 daemon 에 적재. push 는 별도 step 에서 분기.
+      # cache-from/to 로 GHA 의 cache 백엔드를 사용 → 같은 service 의 다음 빌드가 빨라짐.
+      - name: Build image (load to local daemon)
+        uses: docker/build-push-action@v6
+        with:
+          context: services/${{ matrix.service }}
+          load: true
+          push: false
+          tags: |
+            ${{ steps.refs.outputs.tag_full }}
+            ${{ steps.refs.outputs.tag_short }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      # Trivy scan #1 — HIGH/CRITICAL 발견 시 잡 실패 (exit-code=1 이 핵심).
+      # 본 step 이 fail 하면 후속 push step 이 실행되지 않으므로 푸시 차단 효과 발생.
+      #
+      # SHA 핀 권장: aquasecurity/trivy-action@<40-hex-sha>
+      # 현재는 0.36.0+ release 태그 사용 (2026-03 공급망 사건 이후 안전 채널).
+      # docs/tech-stack-versions.md A-8 항목 참조.
+      - name: Trivy scan (block on HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          image-ref: ${{ steps.refs.outputs.tag_full }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+          format: table
+
+      # Trivy scan #2 — 전체 결과를 파일로 저장 (PR 코멘트용).
+      # PR 이벤트에서만 실행. exit-code 는 0 으로 둬서 잡 실패 방지.
+      - name: Trivy scan (full report for PR comment)
+        if: github.event_name == 'pull_request'
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          image-ref: ${{ steps.refs.outputs.tag_full }}
+          severity: HIGH,CRITICAL,MEDIUM
+          exit-code: '0'
+          ignore-unfixed: true
+          format: table
+          output: trivy-${{ matrix.service }}.txt
+
+      # PR 코멘트로 Trivy 결과 부착. sticky-pull-request-comment 가 같은 header 의
+      # 코멘트를 매번 생성하지 않고 update 하므로 PR 이 코멘트로 도배되지 않는다.
+      - name: Comment Trivy results on PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: trivy-${{ matrix.service }}
+          path: trivy-${{ matrix.service }}.txt
+          message: |
+            ### 🛡️ Trivy scan — `${{ matrix.service }}`
+
+            Image: `${{ steps.refs.outputs.tag_full }}`
+
+            ```
+            (full report attached above; HIGH/CRITICAL gate is enforced separately)
+            ```
+
+      # GHCR push — main 브랜치의 push 이벤트일 때만.
+      # 같은 build context 를 다시 빌드하지만 cache 가 모두 hit 되므로 사실상 push 만 수행됨.
+      - name: Push to GHCR (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v6
+        with:
+          context: services/${{ matrix.service }}
+          push: true
+          tags: |
+            ${{ steps.refs.outputs.tag_full }}
+            ${{ steps.refs.outputs.tag_short }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+  # =========================================================================
+  # Job 4) notify — Slack #deploy-status 채널 알림 (R-B1-M3)
+  # =========================================================================
+  # if: always() — test 나 build-scan-push 가 실패해도 실행해서 실패도 알림.
+  # SLACK_WEBHOOK_URL 시크릿이 없으면 graceful skip (개발 초기 환경 호환).
+  notify:
+    name: Notify Slack
+    needs: [changes, test, build-scan-push]
+    if: always() && needs.changes.outputs.has-changes == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      # 전체 파이프라인의 종합 상태 결정.
+      # GHA 의 needs.<job>.result 는 'success' / 'failure' / 'cancelled' / 'skipped' 중 하나.
+      - name: Determine overall status
+        id: status
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_result="${{ needs.test.result }}"
+          build_result="${{ needs.build-scan-push.result }}"
+          if [[ "$test_result" == "success" && "$build_result" == "success" ]]; then
+            echo "status=success" >> "$GITHUB_OUTPUT"
+            echo "emoji=:white_check_mark:" >> "$GITHUB_OUTPUT"
+            echo "color=good" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=failure" >> "$GITHUB_OUTPUT"
+            echo "emoji=:x:" >> "$GITHUB_OUTPUT"
+            echo "color=danger" >> "$GITHUB_OUTPUT"
+          fi
+
+      # SLACK_WEBHOOK_URL 시크릿이 미설정이면 step 자체를 skip.
+      # `secrets.X != ''` 는 if 표현식에서 직접 못 쓰므로 env 우회.
+      - name: Send Slack notification
+        if: env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "${{ steps.status.outputs.emoji }} CI ${{ steps.status.outputs.status }} on ${{ github.repository }}",
+              "attachments": [
+                {
+                  "color": "${{ steps.status.outputs.color }}",
+                  "fields": [
+                    { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
+                    { "title": "Event", "value": "${{ github.event_name }}", "short": true },
+                    { "title": "Services", "value": "${{ needs.changes.outputs.services }}", "short": false },
+                    { "title": "Commit", "value": "<https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>", "short": false },
+                    { "title": "Run", "value": "<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_id }}>", "short": false }
+                  ]
+                }
+              ]
+            }
