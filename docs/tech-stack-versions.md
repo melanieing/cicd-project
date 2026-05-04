@@ -32,8 +32,8 @@
 | 5 | **kube-prometheus-stack** | `84.5.0` | 2026-04 | Prometheus Community 최신 |
 | 6 | **Kiali** | `v2.24.0` | 2026-03-30 | Istio 1.28~1.29 호환 검증 |
 | 7 | **Jaeger** (all-in-one) | `2.17.0` | 2026-04-01 | OTel 기반 v2, 단일 컨테이너 데모 구성 |
-| 8 | **Trivy** (CLI) | `v0.70.0` | 2026-04-17 | 보안 사건 후 정상 채널 복구 버전 |
-| 8a | **trivy-action** (GHA) | `0.36.0` (SHA pin) | 2026-04 | 2026-03 공급망 사건 이후 안전 버전 |
+| 8 | **Trivy** (CLI Docker image) | `aquasec/trivy:0.70.0` | 2026-04-17 | 사건 후 안전 채널. **GHA 에서 직접 호출**(아래 참조) |
+| 8a | ~~`aquasecurity/trivy-action`~~ | **사용 안 함** | — | v0.36.0 미존재 + 2026-03 공급망 사건으로 wrapper 자체 회피. CLI Docker image 직접 사용. See: docs/troubleshooting/2026-05-04-ci-trivy-action-version-and-slack-payload.md |
 | 9 | **Helm** | `3.20.x` | 2026 | v4는 출시 직후라 회피, v3 마지막 stable |
 | 10 | **Python** (베이스 이미지) | `3.13-slim-bookworm` | 2026-04-07 (3.13.13) | FastAPI 호환, 3.14는 지나치게 최신 |
 | 11 | **FastAPI** | `0.136.1` | 2026-04-23 | Uvicorn[standard] 최신과 함께 사용 |
@@ -134,17 +134,18 @@
       value: "true"
   ```
 
-## 8. Trivy — `v0.70.0` (CLI) / `0.36.0` SHA-pin (GHA)
+## 8. Trivy — `aquasec/trivy:0.70.0` Docker image (GHA action wrapper 미사용)
 
-- **출처**: [Releases · aquasecurity/trivy](https://github.com/aquasecurity/trivy/releases), [Releases · aquasecurity/trivy-action](https://github.com/aquasecurity/trivy-action/releases)
+- **출처**: [Releases · aquasecurity/trivy](https://github.com/aquasecurity/trivy/releases)
 - **보안 이력 (중요)**:
-  - **2026-03-19**: aquasecurity/trivy-action 공급망 사건. 태그 `0.0.1`~`0.34.2` 12시간 동안 credential stealer 주입.
-  - **2026 추가**: trivy `v0.69.4` 악성 릴리스 사건도 발생 (post-mortem 진행 중)
-- **권장 보안 조치**:
-  - GHA에서는 **태그가 아닌 commit SHA로 핀** (`uses: aquasecurity/trivy-action@<full-sha>`)
-  - 사고 후 안전 버전 `0.36.0` 이상만 사용
-  - 본 프로젝트 워크플로 작성 시 SHA 핀 적용 + 주기적 갱신
-- **CLI**: `aquasec/trivy:0.70.0` 컨테이너 이미지 사용
+  - **2026-03-19**: `aquasecurity/trivy-action` 공급망 사건. 태그 `0.0.1`~`0.34.2` 12시간 동안 credential stealer 주입.
+  - **2026 추가**: trivy CLI 의 `v0.69.4` 악성 릴리스 사건도 발생.
+- **본 프로젝트의 결정 — action wrapper 자체 회피**:
+  - 첫 시도: `aquasecurity/trivy-action@0.36.0` 핀했으나 그 태그가 실재하지 않아 CI 실패
+  - 사후 분석: action 의 모든 기존 태그가 force-push 영향권. SHA 핀해도 검증 부담
+  - **결정**: GHA 에서 `docker run --rm aquasec/trivy:0.70.0 image ...` 로 공식 CLI 직접 호출.
+    Wrapper 제거 → 공급망 표면 축소, image tag 는 immutable, 호출 형태 명시적
+  - 자세한 경위: `docs/troubleshooting/2026-05-04-ci-trivy-action-version-and-slack-payload.md`
 
 ## 9. Helm — `v3.20.x`
 
