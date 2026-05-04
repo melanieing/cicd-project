@@ -1,0 +1,122 @@
+# .github/dependabot.yml
+#
+# Dependabot 자동 업데이트 PR 설정 (R-B2-O3 충족 — 베이스 이미지 주간 자동화).
+# 본 프로젝트는 매주 월요일 자정(UTC) 에 PR 을 생성하여 5 개 서비스의:
+#   - Docker 베이스 이미지 (python:3.13-slim-bookworm)
+#   - Python 의존성 (requirements.txt)
+#   - GitHub Actions 액션 버전 (.github/workflows/)
+# 세 ecosystem 을 모두 추적한다.
+#
+# Schema: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+# JSON schema: https://json.schemastore.org/dependabot-2.0.json
+#
+# [그룹화 정책]
+# 동일 ecosystem 안의 다중 업데이트를 한 PR 로 묶어 PR 폭발 방지.
+#   - docker         : 5 서비스가 같은 베이스 이미지를 쓰므로 한 PR 로 통일
+#   - pip runtime    : fastapi/uvicorn/asyncpg/pydantic/httpx (런타임 영향)
+#   - pip test       : pytest 계열 (테스트 인프라만 영향)
+#   - github-actions : 모든 액션을 한 PR
+#
+# [라벨]
+# 자동 트리아지를 돕기 위해 dependencies + 카테고리 라벨 부착.
+# 라벨이 GitHub 에 없으면 Dependabot 이 자동 생성한다.
+#
+# [assignees]
+# 단독 작업자라 본인에게 자동 할당하여 PR 알림이 즉시 보이게 한다.
+#
+# [directories (plural)]
+# 2024 GA 된 plural 형태. 5 개 서비스를 한 entry 로 묶어 설정 중복 제거.
+
+version: 2
+
+updates:
+  # ============================================================
+  # 1) Docker base image (python:3.13-slim-bookworm)
+  # ============================================================
+  - package-ecosystem: docker
+    directories:
+      - /services/_template
+      - /services/account
+      - /services/transfer
+      - /services/loan
+      - /services/notification
+    schedule:
+      interval: weekly
+      day: monday
+      time: "00:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - docker
+      - base-image
+    commit-message:
+      prefix: "deps(docker)"
+    assignees:
+      - melanieing
+    groups:
+      base-image:
+        patterns:
+          - "*"
+
+  # ============================================================
+  # 2) Python (pip) — 5 서비스 공통 requirements.txt
+  # ============================================================
+  - package-ecosystem: pip
+    directories:
+      - /services/_template
+      - /services/account
+      - /services/transfer
+      - /services/loan
+      - /services/notification
+    schedule:
+      interval: weekly
+      day: monday
+      time: "00:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - python
+    commit-message:
+      prefix: "deps(python)"
+    assignees:
+      - melanieing
+    groups:
+      # runtime 의존성: 런타임 동작에 직접 영향. 수동 검토 권장.
+      runtime:
+        patterns:
+          - "fastapi"
+          - "uvicorn*"
+          - "asyncpg"
+          - "pydantic*"
+          - "httpx"
+      # test 의존성: 테스트 통과만 확인하면 보통 안전하게 머지 가능.
+      test:
+        patterns:
+          - "pytest*"
+
+  # ============================================================
+  # 3) GitHub Actions — .github/workflows/*.yml 안의 액션 핀
+  # ============================================================
+  # EPIC 3 의 ci.yml 가 들어오면 즉시 추적 시작.
+  # Trivy 같은 보안 도구의 SHA 핀 갱신도 여기서 자동 PR 로 들어온다.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "00:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: "deps(actions)"
+    assignees:
+      - melanieing
+    groups:
+      actions:
+        patterns:
+          - "*"
