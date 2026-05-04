@@ -1,0 +1,31 @@
+{{/*
+charts/payment-platform/templates/service.yaml
+
+각 service 의 K8s Service (ClusterIP) 를 생성. 4 개 Service 가 한 파일에서 렌더링.
+
+selector 는 Deployment 의 template.labels 와 정확히 일치해야 endpoint 매핑이 됨.
+*/}}
+{{- range $name, $svc := .Values.services }}
+{{- $svcCtx := merge (deepCopy $svc) (dict "name" $name) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "payment-platform.serviceFullname" $svcCtx }}
+  labels:
+    {{- include "payment-platform.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  # ClusterIP — 클러스터 내부에서만 접근. 외부 노출은 EPIC 6 의 Istio Gateway 가 담당.
+  type: ClusterIP
+  ports:
+    - name: http
+      # 클라이언트가 부르는 포트 (Service 의 port). transfer 가 notification 호출할 때 :8000 사용.
+      port: 8000
+      # Pod 안의 컨테이너 포트 (Deployment 의 containerPort 와 일치).
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "payment-platform.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+{{- end }}

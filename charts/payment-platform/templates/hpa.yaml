@@ -1,0 +1,44 @@
+{{/*
+charts/payment-platform/templates/hpa.yaml
+
+각 service 의 HorizontalPodAutoscaler 를 생성. R-B3-M1 충족.
+  - CPU 평균 사용률 70% 초과 시 scale out
+  - replicas 2 ~ 10 범위
+  - 4 service 각각 독립 HPA (트래픽 패턴 다를 수 있음)
+
+[behavior]
+- HPA 가 enabled=false 인 경우 (예: dev 환경에서 부하 테스트 안 할 때) 이 매니페스트 자체가 렌더링되지 않음.
+  values-dev.yaml 에서 global.hpa.enabled=false 로 끄면 Deployment 의 spec.replicas 가 다시 활성화됨.
+*/}}
+{{- $g := .Values.global -}}
+{{- if $g.hpa.enabled -}}
+{{- range $name, $svc := .Values.services }}
+{{- $svcCtx := merge (deepCopy $svc) (dict "name" $name) }}
+---
+# autoscaling/v2 가 K8s 1.23+ stable. metrics.resource 등 v2 전용 필드 사용.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "payment-platform.serviceFullname" $svcCtx }}
+  labels:
+    {{- include "payment-platform.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "payment-platform.serviceFullname" $svcCtx }}
+  minReplicas: {{ $g.hpa.minReplicas }}
+  maxReplicas: {{ $g.hpa.maxReplicas }}
+  # CPU 만 metric 으로 사용. 추후 메모리/RPS 추가 가능.
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $g.hpa.targetCPUUtilizationPercentage }}
+  # behavior 미설정 시 K8s default 사용 (보통 안정적).
+  # 격렬한 트래픽 패턴이 필요해지면 stabilizationWindowSeconds / scaleUp/scaleDown 추가.
+{{- end }}
+{{- end }}

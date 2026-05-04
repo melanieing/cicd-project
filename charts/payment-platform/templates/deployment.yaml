@@ -1,0 +1,103 @@
+{{/*
+charts/payment-platform/templates/deployment.yaml
+
+각 service 의 Deployment 를 생성. range 로 .Values.services 를 순회해서 4 개 Deployment 가 한 파일에서 렌더링.
+
+[Helm 템플릿 문법 메모]
+  {{- range $name, $svc := .Values.services }}  : services map 을 (key, value) 로 순회
+  $.Values                                       : range 안에서 root 컨텍스트 접근 (현재는 $svc 가 컨텍스트)
+  {{- end }}                                     : range 종료
+  {{- $g := $.Values.global -}}                  : 자주 쓰는 path 를 변수로 단축
+  {{- if eq $name "transfer" }}                  : 조건문 (transfer 만 NOTIFICATION_URL 다르게)
+
+[설계 포인트]
+  1. spec.replicas 를 hpa.enabled=true 일 때 생략 → HPA 가 replica 관리 (HPA 와 Deployment 가 충돌 방지)
+  2. RollingUpdate 는 maxSurge=1 / maxUnavailable=0 → 배포 중 가용성 유지
+  3. SecurityContext 는 Dockerfile 의 UID 1001 과 정렬
+  4. envFrom 으로 ConfigMap 전체를 env 에 주입 (env 추가 시 ConfigMap 만 수정)
+  5. Probes 는 main.py 의 /health, /health/ready 와 일치
+*/}}
+{{- $g := .Values.global -}}
+{{- range $name, $svc := .Values.services }}
+{{- $svcCtx := merge (deepCopy $svc) (dict "name" $name) }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # service 이름 그대로 사용 (account / transfer / loan / notification).
+  # K8s Service 와 동일 이름이라 DNS 매핑이 직관적.
+  name: {{ include "payment-platform.serviceFullname" $svcCtx }}
+  labels:
+    {{- include "payment-platform.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  # HPA 가 replicas 를 관리할 때는 Deployment 의 replicas 를 생략해야 함.
+  # 그렇지 않으면 helm 이 매번 replicas 를 default 로 reset → HPA 와 무한 핑퐁.
+  {{- if not $g.hpa.enabled }}
+  replicas: {{ $g.replicaCount }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ $g.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ $g.rollingUpdate.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "payment-platform.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $name }}
+  template:
+    metadata:
+      labels:
+        {{- include "payment-platform.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $name }}
+    spec:
+      serviceAccountName: {{ $g.serviceAccountName }}
+      securityContext:
+        {{- toYaml $g.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ $name }}
+          # image: <registry>/<service>:<tag>
+          image: "{{ $g.imageRegistry }}/{{ $name }}:{{ $g.imageTag }}"
+          imagePullPolicy: {{ $g.imagePullPolicy }}
+          securityContext:
+            {{- toYaml $g.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ $g.containerPort }}
+              protocol: TCP
+          # ConfigMap 의 모든 키를 env 로 주입. service 별 차이(SERVICE_NAME / DOMAIN_ACTION 등)
+          # 와 공통 env 모두 ConfigMap 에 들어가 있다 (configmap.yaml 참조).
+          envFrom:
+            - configMapRef:
+                name: {{ include "payment-platform.serviceFullname" $svcCtx }}-config
+          # DB 비밀번호만 별도 Secret 에서 주입 (보안 분리).
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://{{ $.Values.postgres.user }}:$(DB_PASSWORD)@{{ include "payment-platform.dbHost" $ }}:5432/{{ $svc.db }}"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+          # Liveness — main.py 의 /health (DB 무관, 프로세스 생존 확인)
+          livenessProbe:
+            httpGet:
+              path: {{ $g.probes.liveness.path }}
+              port: http
+            initialDelaySeconds: {{ $g.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ $g.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ $g.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ $g.probes.liveness.failureThreshold }}
+          # Readiness — main.py 의 /health/ready (DB ping 포함)
+          # DB 가 죽으면 503 → K8s 가 트래픽 차단 (Service endpoints 에서 자동 제외)
+          readinessProbe:
+            httpGet:
+              path: {{ $g.probes.readiness.path }}
+              port: http
+            initialDelaySeconds: {{ $g.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ $g.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ $g.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ $g.probes.readiness.failureThreshold }}
+          resources:
+            {{- toYaml $g.resources | nindent 12 }}
+{{- end }}
