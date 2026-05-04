@@ -44,13 +44,13 @@
 
 | ID | 태스크 | R-ID | 산출물 |
 |---|---|---|---|
-| 3.0 | 워크플로 `test` job 선행 배치 (pytest 실패 시 build 단계 차단) | B1-M2 | `.github/workflows/ci.yml` |
-| 3.1 | path filter 기반 변경 감지 (`dorny/paths-filter`) | B1-M2 | 동일 워크플로 |
-| 3.2 | 4잡 매트릭스 병렬 빌드/테스트 + **직렬 vs 병렬 시간 측정** | B1-O1 | `docs/metrics/ci-parallelization.md` [★] |
-| 3.3 | Docker Buildx + GHCR 푸시 (`git-sha` 태그) | B1-M2, B2-M2 | 동일 워크플로 |
-| 3.4 | Trivy 이미지 스캔 (HIGH/CRITICAL 차단) | B2-M3 | 동일 워크플로 |
-| 3.5 | Trivy 결과 PR 코멘트 자동 게시 + 실제 PR 캡처 | B2-O1 | 동일 워크플로, 스크린샷 |
-| 3.6 | Slack `#deploy-status` 성공/실패 알림 | B1-M3 | 동일 워크플로 + Repo Secret |
+| 3.0 | 워크플로 `test` job 선행 배치 (pytest 실패 시 build 단계 차단) ✅ | B1-M2 | `.github/workflows/ci.yml` |
+| 3.1 | path filter 기반 변경 감지 (`dorny/paths-filter`) ✅ | B1-M2 | 동일 워크플로 |
+| 3.2 | 4잡 매트릭스 병렬 빌드/테스트 ✅ + **직렬 vs 병렬 시간 측정** 🟡 (워크플로 첫 run 후 측정) | B1-O1 | 동일 워크플로 / `docs/metrics/ci-parallelization.md` [★] |
+| 3.3 | Docker Buildx + GHCR 푸시 (`git-sha` 태그) ✅ | B1-M2, B2-M2 | 동일 워크플로 |
+| 3.4 | Trivy 이미지 스캔 (HIGH/CRITICAL 차단) ✅ | B2-M3 | 동일 워크플로 |
+| 3.5 | Trivy 결과 PR 코멘트 자동 게시 ✅ + 실제 PR 캡처 🟡 (PR 한 건 후) | B2-O1 | 동일 워크플로, 스크린샷 |
+| 3.6 | Slack `#deploy-status` 성공/실패 알림 ✅ + Webhook secret 등록 🟡 (사용자 작업) | B1-M3 | 동일 워크플로 + Repo Secret |
 
 ## EPIC 4 — Helm & K8s 배포 (Day 2 오후)
 
