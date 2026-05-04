@@ -47,26 +47,38 @@ chart 가 cluster 안에서 잘 떠도 **외부 시스템(GHCR)** 의 상태가 
 
 ### Fresh install (kind cluster, dev)
 
-**중요**: `imageTag` 가 비어있으면 helm 이 즉시 fail. 항상 명시:
+**중요**: `imageTag` 가 비어있으면 helm 이 즉시 fail. 항상 명시.
+또한 `git rev-parse origin/main` 결과가 그대로 GHCR image sha 일 거라고 가정하지 말 것 — main 의 가장 최근 커밋이 docs-only 면 그 sha 의 image 는 없음.
+
+#### 권장 — `scripts/latest-image-sha.sh` 가 GHCR API 로 실제 존재하는 sha 를 반환
 
 ```bash
-# 최신 main commit sha 사용
-LATEST_SHA=$(git rev-parse origin/main)
+# gh CLI 인증 필요: gh auth login
+SHA=$(./scripts/latest-image-sha.sh)
+echo "Using image sha: $SHA"
 helm install payment charts/payment-platform/ \
   -n payment-dev -f charts/payment-platform/values-dev.yaml \
-  --set global.imageTag="$LATEST_SHA"
+  --set global.imageTag="$SHA"
 ```
 
-또는 sha-short 태그 (7-hex):
+#### 대안 — GHCR UI 에서 수동 복사
+
+```
+https://github.com/users/melanieing/packages/container/account/versions
+```
+페이지에서 가장 최근 40-hex 태그를 복사해서 `--set global.imageTag=<paste>` 로 사용.
+4 service 가 같은 sha 를 가지지 않을 수 있으므로 (path-filter 로 일부만 빌드된 commit 의 경우)
+helm install 이 manifest unknown 으로 실패하면 다른 service 페이지에서도 확인.
+
+#### 마지막 방법 — `git rev-parse origin/main` (불안정)
+
+직전 커밋이 workflow / `_template` / 4 service 모두 변경한 commit 이라는 보장이 있을 때만 사용:
 ```bash
-SHORT="sha-$(git rev-parse --short=7 origin/main)"
 helm install payment charts/payment-platform/ \
   -n payment-dev -f charts/payment-platform/values-dev.yaml \
-  --set global.imageTag="$SHORT"
+  --set global.imageTag=$(git rev-parse origin/main)
 ```
-
-EPIC 5 의 ArgoCD image updater 도입 후에는 image updater 가 새 sha 를 발견할 때마다
-values 파일에 자동 commit → helm install 사용자가 sha 신경 안 써도 됨.
+일반적으로는 위 두 방법보다 깨질 확률이 높음. EPIC 5 의 ArgoCD image updater 가 도입되면 본 단계 자체가 사라진다.
 
 ```bash
 helm install payment charts/payment-platform/ \
