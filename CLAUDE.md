@@ -72,6 +72,13 @@
 
 **가정과 검증을 구분한다.** "절대 경로로 호출하면 cwd 무관할 것" 같은 추론은 **반드시 실행으로 검증**해야 한다. 추론 vs 검증의 혼동이 본 프로젝트의 가장 흔한 회귀 원인이다 (참조: `docs/troubleshooting/2026-05-04-test-all-script-pytest-collection-without-cd.md`).
 
+**stateless 검증 ≠ stateful 검증.** lint / schema / dry-run 같은 stateless 도구는 산출물 자체만 본다. 실제 클러스터의 기존 리소스, 권한, 네트워크와의 **충돌 여부 (stateful)** 는 못 잡는다. 클러스터를 만지는 산출물 (Helm chart, K8s manifest, ArgoCD Application 등) 을 새로 도입할 때는:
+- 가능하면 sandbox 에서 kind/minikube 띄워 `helm install` / `kubectl apply` 까지 실행
+- 그게 어려우면 **마이그레이션 절차 (cleanup/adopt 스크립트 + chart README)** 를 별도 산출물로 의무 동반
+- "사용자가 어떤 cluster state 에서 출발하는가" 를 명시적으로 가정하고 commit 메시지에 적기
+
+또한 IDE/static YAML linter 가 보는 시점도 검증 범위. helm chart 의 경우 **rendered 출력에 `yamllint key-duplicates`** 까지 통과해야 author-time 결함도 잡힌다 (참조: `docs/troubleshooting/2026-05-04-helm-chart-ide-visible-defects.md`, `docs/troubleshooting/2026-05-04-helm-install-blocked-by-task1-4-resources.md`).
+
 ---
 
 ## B. 프로젝트 컨텍스트
