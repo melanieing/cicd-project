@@ -17,6 +17,8 @@ charts/payment-platform/templates/deployment.yaml
   4. envFrom 으로 ConfigMap 전체를 env 에 주입 (env 추가 시 ConfigMap 만 수정)
   5. Probes 는 main.py 의 /health, /health/ready 와 일치
 */}}
+{{- /* imageTag 가 비어있으면 즉시 fail (docs/registry.md §3.2 정책 강제). */ -}}
+{{- include "payment-platform.requireImageTag" . -}}
 {{- $g := .Values.global -}}
 {{- range $name, $svc := .Values.services }}
 {{- $svcCtx := merge (deepCopy $svc) (dict "name" $name) }}
@@ -52,6 +54,11 @@ spec:
         app.kubernetes.io/component: {{ $name }}
     spec:
       serviceAccountName: {{ $g.serviceAccountName }}
+      # GHCR 가 private 일 때만 의미. public 이면 imagePullSecrets 는 빈 리스트라 렌더 안 됨.
+      {{- with $g.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         {{- toYaml $g.podSecurityContext | nindent 8 }}
       containers:

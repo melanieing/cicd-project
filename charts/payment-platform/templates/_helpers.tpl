@@ -69,3 +69,12 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- define "payment-platform.dbHost" -}}
 {{- printf "postgres.%s.svc.cluster.local" .Release.Namespace -}}
 {{- end -}}
+
+{{/* imageTag 강제 검증.
+     docs/registry.md §3.2 정책: mutable tag(`latest` 포함) 미사용. 항상 sha 핀.
+     빈 값으로 helm install 하면 즉시 fail() 로 명확한 에러 메시지를 띄운다. */}}
+{{- define "payment-platform.requireImageTag" -}}
+{{- if not .Values.global.imageTag -}}
+{{- fail (printf "global.imageTag must be set to a CI-pushed git sha. Example:\n  helm install ... --set global.imageTag=$(git rev-parse origin/main)\nSee charts/payment-platform/README.md and docs/registry.md.") -}}
+{{- end -}}
+{{- end -}}

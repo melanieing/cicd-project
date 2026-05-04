@@ -20,9 +20,53 @@ charts/payment-platform/
     └── postgres.yaml       Secret + ConfigMap + 2 Service + StatefulSet
 ```
 
+## 사전 점검 (외부 상태)
+
+chart 가 cluster 안에서 잘 떠도 **외부 시스템(GHCR)** 의 상태가 안 맞으면 pod 가 ImagePullBackOff 됨.
+첫 install 전에 다음 3 가지를 모두 확인:
+
+1. **CI 가 적어도 한 번 main push 를 처리해 sha 태그가 GHCR 에 존재하는가**
+   확인: `https://github.com/users/melanieing/packages/container/account/versions`
+   에서 `sha-<7hex>` 또는 `<40-hex>` 태그가 보이는지.
+   → 본 chart 는 정책상 `:latest` 같은 mutable 태그를 쓰지 않는다 ([`docs/registry.md` §3.2](../../docs/registry.md))
+   → helm install 시 항상 sha 를 명시해야 하며, 미명시 시 `fail()` 로 즉시 abort.
+
+2. **GHCR 패키지 가시성**
+   default 는 private. K8s 가 인증 없이 pull 하려면 public 으로 전환:
+   - `https://github.com/users/melanieing/packages/container/<name>/settings`
+   - 하단 Danger Zone → Change visibility → Public
+   - 4 패키지(account, transfer, loan, notification) 모두 동일 처리
+
+3. **(선택) imagePullSecret**
+   private 으로 유지하려면 PAT 발급 후 `kubectl create secret docker-registry`
+   로 등록하고 values 의 `global.imagePullSecrets` 채우기. values.yaml 의 인라인 주석 참조.
+
+확인 후 ImagePullBackOff 가 발생하면: [`docs/troubleshooting/2026-05-04-helm-install-imagepullbackoff-latest-tag.md`](../../docs/troubleshooting/2026-05-04-helm-install-imagepullbackoff-latest-tag.md)
+
 ## Quickstart
 
 ### Fresh install (kind cluster, dev)
+
+**중요**: `imageTag` 가 비어있으면 helm 이 즉시 fail. 항상 명시:
+
+```bash
+# 최신 main commit sha 사용
+LATEST_SHA=$(git rev-parse origin/main)
+helm install payment charts/payment-platform/ \
+  -n payment-dev -f charts/payment-platform/values-dev.yaml \
+  --set global.imageTag="$LATEST_SHA"
+```
+
+또는 sha-short 태그 (7-hex):
+```bash
+SHORT="sha-$(git rev-parse --short=7 origin/main)"
+helm install payment charts/payment-platform/ \
+  -n payment-dev -f charts/payment-platform/values-dev.yaml \
+  --set global.imageTag="$SHORT"
+```
+
+EPIC 5 의 ArgoCD image updater 도입 후에는 image updater 가 새 sha 를 발견할 때마다
+values 파일에 자동 commit → helm install 사용자가 sha 신경 안 써도 됨.
 
 ```bash
 helm install payment charts/payment-platform/ \

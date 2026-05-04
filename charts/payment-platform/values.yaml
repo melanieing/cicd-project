@@ -22,10 +22,27 @@
 global:
   # 이미지 registry. 4 service 모두 GHCR 에 push 된다.
   imageRegistry: ghcr.io/melanieing
-  # 이미지 태그. CI 가 git-sha 로 push 하므로 운영에서는 dev/prod values 가 override.
-  # default 'latest' 는 안전망 — Dev 가 README 따라 helm install 만 했을 때도 일단 동작.
-  imageTag: latest
+
+  # 이미지 태그 — 의도적으로 비어있음 (docs/registry.md §3.2 정책: mutable tag 미사용).
+  # helm install 시 반드시 명시:
+  #   helm install ... --set global.imageTag=$(git rev-parse origin/main)
+  # 또는 values-{dev,prod}.yaml 에서 sha 명시.
+  # ArgoCD image updater 도입 후에는 updater 가 자동 갱신.
+  # templates/_helpers.tpl 의 fail() 가 빈 값에서 helm 을 즉시 abort 시킨다.
+  imageTag: ""
+
   imagePullPolicy: IfNotPresent
+
+  # imagePullSecrets — GHCR 패키지가 private 일 때 사용.
+  # public 으로 운영하면 비워두고 인증 없이 pull. (본 프로젝트 권장)
+  # private 시 등록 절차:
+  #   kubectl -n payment-dev create secret docker-registry ghcr-pull \
+  #     --docker-server=ghcr.io --docker-username=<gh-user> \
+  #     --docker-password=<GHCR_PAT> --docker-email=<email>
+  # 그 다음 values 에서:
+  #   global.imagePullSecrets:
+  #     - name: ghcr-pull
+  imagePullSecrets: []
 
   # 모든 service 의 service-account 이름 (현재는 default 사용).
   # 추후 ServiceAccount + RBAC 강화 시 별도 SA 로 분리.

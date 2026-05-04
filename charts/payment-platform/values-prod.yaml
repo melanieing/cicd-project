@@ -7,7 +7,8 @@
 # resources 는 dev 보다 약간 크게, HPA 활성, 비밀번호는 별도 시나리오(외부 주입) 로.
 
 global:
-  imageTag: latest  # 운영에서는 ArgoCD image updater 가 git-sha 로 교체 (EPIC 5)
+  # imageTag 는 비워두고 EPIC 5 의 ArgoCD image updater 가 sha-* 태그로 자동 commit.
+  # 정책 근거: docs/registry.md §3.2 (mutable tag 미사용).
 
   # prod 는 HPA 활성. min 2 / max 10.
   replicaCount: 2
