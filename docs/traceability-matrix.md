@@ -48,8 +48,8 @@
 
 | R-ID | 분류 | 요약 | Backlog Task | 산출물 경로 | 상태 |
 |---|---|---|---|---|---|
-| A1-M1 | [필] | Istio vs Linkerd ADR | 6.1 | `docs/adr/0003-mesh-istio-vs-linkerd.md` | ⬜ |
-| A1-M2 | [필] | Istio 설치 + 사이드카 자동주입 | 6.2, 6.3 | 설치 로그, namespace 패치 | ⬜ |
+| A1-M1 | [필] | Istio vs Linkerd ADR | 6.1 | `docs/adr/0003-mesh-istio-vs-linkerd.md` | ✅ |
+| A1-M2 | [필] | Istio 설치 + 사이드카 자동주입 | 6.2, 6.3 | `docs/setup/istio-install.md` (가이드 ✅) + 사용자 실제 클러스터 설치 검증 (TBD) | 🟡 |
 | A1-M3 | [필] | VS+DR Canary 20→50→100 | 6.4, 6.5 | `istio/canary/` | ⬜ |
 | A1-O1 | [선→필] | mTLS STRICT + Kiali 확인 | 6.6, 6.7 | `istio/peerauth.yaml` + 캡처 | ⬜ |
 | A1-O2 | [선→필] | 블루-그린 + 관측성 강화 | 6.8 | `istio/blue-green/`, `scripts/switch-bluegreen.sh` | ⬜ |

@@ -52,6 +52,19 @@ spec:
       labels:
         {{- include "payment-platform.selectorLabels" $ | nindent 8 }}
         app.kubernetes.io/component: {{ $name }}
+      # ---------------------------------------------------------------------------
+      # Istio 사이드카 race 회피 (EPIC 6)
+      # ---------------------------------------------------------------------------
+      # 사이드카 (istio-proxy) 가 ready 가 되기 전에 메인 컨테이너 (uvicorn) 가 시작되면
+      # outbound 연결 (postgres, 다른 서비스) 이 사이드카에 막혀 connection refused.
+      # asyncpg 는 그 connection refused 를 transient 로 보지 않고 즉시 InvalidConnectError
+      # 를 던지며, uvicorn 의 lifespan handler 는 그걸 받아 exit 3 로 종료 → CrashLoopBackOff.
+      #
+      # holdApplicationUntilProxyStarts: true 는 사이드카가 ready 를 알릴 때까지 메인
+      # 컨테이너의 시작 자체를 늦춘다. namespace 에 istio-injection=enabled 라벨이 없으면
+      # 이 annotation 은 그냥 무시되므로 해롭지 않다 (메시 미적용 환경에서도 안전).
+      annotations:
+        proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
     spec:
       serviceAccountName: {{ $g.serviceAccountName }}
       # GHCR 가 private 일 때만 의미. public 이면 imagePullSecrets 는 빈 리스트라 렌더 안 됨.

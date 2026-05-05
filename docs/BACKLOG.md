@@ -77,9 +77,9 @@
 
 | ID | 태스크 | R-ID | 산출물 |
 |---|---|---|---|
-| 6.1 | **ADR 0003: Istio vs Linkerd 비교** | A1-M1 | `docs/adr/0003-mesh-istio-vs-linkerd.md` |
-| 6.2 | Istio demo profile 설치 (`istioctl install`) | A1-M2 | 설치 로그/스크린샷 |
-| 6.3 | `payment-dev`, `payment-prod` 사이드카 자동 주입 라벨 | A1-M2 | namespace 패치 |
+| 6.1 | ✅ **ADR 0003: Istio vs Linkerd 비교** | A1-M1 | `docs/adr/0003-mesh-istio-vs-linkerd.md` |
+| 6.2 | ✅ (가이드) Istio 1.29.2 default profile 설치 가이드 (`istioctl install`) | A1-M2 | `docs/setup/istio-install.md` (사용자 실제 설치 검증은 별도) |
+| 6.3 | ✅ (가이드) `payment-dev`, `payment-prod` 사이드카 자동 주입 라벨 + chart 의 `holdApplicationUntilProxyStarts` annotation | A1-M2 | `docs/setup/istio-install.md` § 4 + `charts/payment-platform/templates/deployment.yaml` |
 | 6.4 | `transfer` v1/v2 두 버전 빌드 + 배포 | A1-M3 | values 파일 |
 | 6.5 | VirtualService + DestinationRule (Canary 20→50→100%) | A1-M3, B3-O3 | `istio/canary/*.yaml` |
 | 6.6 | PeerAuthentication STRICT mTLS | A1-O1 | `istio/peerauth.yaml` |
