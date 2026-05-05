@@ -71,17 +71,17 @@
 | 5.2 | `Application` (dev), `Application` (prod) 매니페스트 ✅ | B3-O1, B3-O2 | `argocd/applications/payment-{dev,prod}.yaml`, `argocd/projects/payment-platform.yaml` |
 | 5.3 | App-of-Apps 패턴 적용 [★] ✅ | B3-O1 | `argocd/root-app.yaml` |
 | 5.4 | Auto-sync + self-heal (dev), 수동 sync (prod) ✅ | B3-O1 | Application spec (5.2 매니페스트 내 `syncPolicy`) |
-| 5.5 | GitHub Environment Protection (prod 승인자 강제) ✅ 가이드 / 🟡 첫 워크플로 도달 후 Pending 화면 캡처 (cd.yml 도입 후) | B1-O2 | `docs/setup/github-environment-protection.md`, 스크린샷 (TBD) |
+| 5.5 | GitHub Environment Protection (prod 승인자 강제) ✅ 가이드 + ✅ config 화면 캡처 (1/3) / 🟡 cd.yml 도입 후 pending + approved 캡처 (2/3) | B1-O2 | `docs/setup/github-environment-protection.md`, `docs/screenshots/gh-env-config.png` (나머지 2 장 TBD) |
 
 ## EPIC 6 — 서비스 메시 (Istio) (Day 3 오후)
 
 | ID | 태스크 | R-ID | 산출물 |
 |---|---|---|---|
 | 6.1 | ✅ **ADR 0003: Istio vs Linkerd 비교** | A1-M1 | `docs/adr/0003-mesh-istio-vs-linkerd.md` |
-| 6.2 | ✅ (가이드) Istio 1.29.2 default profile 설치 가이드 (`istioctl install`) | A1-M2 | `docs/setup/istio-install.md` (사용자 실제 설치 검증은 별도) |
-| 6.3 | ✅ (가이드) `payment-dev`, `payment-prod` 사이드카 자동 주입 라벨 + chart 의 `holdApplicationUntilProxyStarts` annotation | A1-M2 | `docs/setup/istio-install.md` § 4 + `charts/payment-platform/templates/deployment.yaml` |
-| 6.4 | ✅ `transfer` 두 인스턴스 (stable / canary) — chart 가 stable, `istio/canary/transfer-canary.yaml` 가 canary. 같은 image 에 SERVICE_VERSION env 만 다르게 + `/version` 엔드포인트로 응답 차이 가시화 | A1-M3 | `services/transfer/main.py`, `charts/payment-platform/templates/deployment.yaml`, `charts/payment-platform/values.yaml`, `istio/canary/transfer-canary.yaml` |
-| 6.5 | ✅ VirtualService + DestinationRule (Canary 20→50→100) + 빠른 weight 변경 스크립트 + 100 회 분포 측정 스크립트 + 시연 절차 README | A1-M3, B3-O3 | `istio/canary/destinationrule.yaml`, `istio/canary/virtualservice.yaml`, `istio/canary/scripts/set-canary-weight.sh`, `istio/canary/scripts/test-traffic-split.sh`, `istio/canary/README.md` |
+| 6.2 | ✅ Istio 1.29.2 default profile 설치 (`istioctl install`) — 가이드 작성 + 사용자 클러스터 적용 (istiod + ingress gateway 모두 `1/1 Running`, `istioctl proxy-status` 에서 ingress gateway 가 SUBSCRIBED `3 (CDS,LDS,EDS)` 로 인지됨) | A1-M2 | `docs/setup/istio-install.md` |
+| 6.3 | ✅ 사이드카 자동 주입 — `payment-dev` / `payment-prod` namespace 에 `istio-injection=enabled` 라벨 부여 + 기존 pod rolling restart → K8s 1.28+ **Native Sidecar mode** 로 사이드카가 `spec.initContainers[]` 의 `restartPolicy: Always` entry 로 자동 들어감 (시작 race 자동 해결). 모든 pod 가 `READY 2/2` + `proxy-status` 에서 SUBSCRIBED `4 (CDS,LDS,EDS,RDS)` 로 인지. chart 의 `holdApplicationUntilProxyStarts` annotation 은 K8s 1.27 이하 호환성용 방어 장치 (Native Sidecar 환경에서는 불필요하지만 무해) | A1-M2 | `docs/setup/istio-install.md` § 4, `charts/payment-platform/templates/deployment.yaml` |
+| 6.4 | ✅ `transfer` 두 인스턴스 (stable / canary) 매니페스트 — chart 가 stable, `istio/canary/transfer-canary.yaml` 가 canary. 같은 image 에 `SERVICE_VERSION` env 만 다르게 + `/version` 엔드포인트로 응답 차이 가시화. / 🟡 사용자 클러스터에서 stable + canary 동시 기동 검증 (PR 머지 → CI 새 image → ArgoCD sync 후) | A1-M3 | `services/transfer/main.py`, `charts/payment-platform/templates/deployment.yaml`, `charts/payment-platform/values.yaml`, `istio/canary/transfer-canary.yaml` |
+| 6.5 | ✅ VirtualService + DestinationRule (Canary 20→50→100) + 빠른 weight 변경 스크립트 + 100 회 분포 측정 스크립트 + 시연 절차 README. / 🟡 사용자 클러스터에서 weight 별 (80/20, 50/50, 0/100) 100 회 분포 측정 + 캡처 | A1-M3, B3-O3 | `istio/canary/destinationrule.yaml`, `istio/canary/virtualservice.yaml`, `istio/canary/scripts/set-canary-weight.sh`, `istio/canary/scripts/test-traffic-split.sh`, `istio/canary/README.md` |
 | 6.6 | PeerAuthentication STRICT mTLS | A1-O1 | `istio/peerauth.yaml` |
 | 6.7 | Kiali에서 mTLS lock 아이콘 + 트래픽 분배 캡처 | A1-O1 | 스크린샷 |
 | 6.8 | **블루-그린 라우팅** (`account` 서비스 100% 즉시 전환) + 전환 스크립트 | A1-O2 | `istio/blue-green/`, `scripts/switch-bluegreen.sh` |
