@@ -296,6 +296,13 @@ transfer-xxxxxxxxx-xxxxx          transfer         istio-proxy
 
 각 행에 `istio-proxy` 가 보이면 성공. 안 보이면 §6 트러블슈팅 참조.
 
+> **용어 정리**: 본 가이드 도입부에서 사이드카를 "Envoy proxy" 라고 소개했는데, 위 출력의
+> 두 번째 컨테이너 이름은 `istio-proxy` 로 보인다. 둘은 같은 것이다. Istio 는 데이터 플레인
+> proxy 로 Envoy 를 그대로 사용하지만, K8s pod 안에서의 컨테이너 이름표만 `istio-proxy` 로
+> 붙여놓는다 (이미지는 `docker.io/istio/proxyv2:<버전>` 으로 Envoy 를 자체 빌드한 것).
+> 따라서 Istio 컨텍스트에서 "사이드카", "Envoy proxy", "istio-proxy 컨테이너" 는 모두 같은
+> 대상을 가리킨다.
+
 ### 4-5. 컨트롤 플레인이 사이드카를 인지
 
 ```bash
