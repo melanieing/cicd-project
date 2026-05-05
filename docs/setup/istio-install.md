@@ -275,25 +275,59 @@ kubectl -n payment-prod rollout status deployment --timeout=5m
 
 ### 4-4. 사이드카 주입 검증
 
+가장 직관적인 검증은 `READY` 컬럼이 `2/2` 인지 보는 것이다 (메인 앱 + 사이드카 = 2 컨테이너 모두 ready).
+
 ```bash
-# 각 pod 의 컨테이너 수가 2 (앱 + istio-proxy) 인지 확인
-kubectl -n payment-dev get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].name}{"\n"}{end}'
+kubectl -n payment-dev get pods
 ```
 
 **기대 출력**:
 
 ```
-account-xxxxxxxxx-xxxxx           account          istio-proxy
-loan-xxxxxxxxx-xxxxx              loan             istio-proxy
-notification-xxxxxxxxx-xxxxx      notification     istio-proxy
-postgres-0                         postgres         istio-proxy
-transfer-xxxxxxxxx-xxxxx          transfer         istio-proxy
+NAME                            READY   STATUS    RESTARTS   AGE
+account-xxxxxxxxx-xxxxx         2/2     Running   0          5m
+loan-xxxxxxxxx-xxxxx            2/2     Running   0          5m
+notification-xxxxxxxxx-xxxxx    2/2     Running   0          5m
+postgres-0                       2/2     Running   0          5m
+transfer-xxxxxxxxx-xxxxx        2/2     Running   0          5m
 ```
 
-각 행에 `istio-proxy` 가 보이면 성공. 안 보이면 §6 트러블슈팅 참조.
+`READY` 가 모두 `2/2` 면 성공. `1/2` 가 보이면 사이드카 또는 메인 앱 중 하나가 ready 가 안 된 것 — `kubectl describe pod <name>` 으로 어느 컨테이너의 readiness probe 가 실패했는지 본다.
+
+#### 사이드카가 어디에 들어갔는지 정확히 보기 (Native Sidecar 메모)
+
+K8s 1.28 + Istio 1.20 부터 사이드카는 **`spec.containers[]` 가 아니라 `spec.initContainers[]` 의 특별한 entry** 에 주입된다 (Native Sidecar Containers 기능, K8s 1.33 + Istio 1.29 환경에서 기본 활성). 그래서 `kubectl get pods -o jsonpath='{...spec.containers[*].name}'` 같은 옛 verification 명령은 메인 앱 이름만 보여주고 사이드카는 안 보여주는 것처럼 출력된다 (사이드카는 잘 들어가 있음). 정확히 보려면:
+
+```bash
+kubectl -n payment-dev get pods \
+  -o custom-columns='NAME:.metadata.name,INIT:.spec.initContainers[*].name,MAIN:.spec.containers[*].name'
+```
+
+**기대 출력**:
+
+```
+NAME                          INIT                       MAIN
+account-xxxxxxxxx-xxxxx       istio-init,istio-proxy     account
+loan-xxxxxxxxx-xxxxx          istio-init,istio-proxy     loan
+notification-xxxxxxxxx-xxxxx  istio-init,istio-proxy     notification
+postgres-0                    istio-init,istio-proxy     postgres
+transfer-xxxxxxxxx-xxxxx      istio-init,istio-proxy     transfer
+```
+
+INIT 컬럼에:
+- `istio-init` — 진짜 init container, pod 시작 시 한 번 실행되어 iptables 규칙 설정 후 종료
+- `istio-proxy` — Native Sidecar 의 본체 (`restartPolicy: Always` 가 붙어 pod 가 살아있는 동안 계속 동작)
+
+`istio-proxy` 의 로그도 잘 흐르는지 마지막 확인:
+
+```bash
+kubectl -n payment-dev logs <transfer pod 이름> -c istio-proxy --tail=20
+```
+
+`info Envoy proxy is ready` 메시지와 함께 30 분 간격의 `xdsproxy connected to delta upstream XDS server` 로그가 보이면 사이드카가 istiod 와 정상 통신 중.
 
 > **용어 정리**: 본 가이드 도입부에서 사이드카를 "Envoy proxy" 라고 소개했는데, 위 출력의
-> 두 번째 컨테이너 이름은 `istio-proxy` 로 보인다. 둘은 같은 것이다. Istio 는 데이터 플레인
+> INIT 컬럼에서 사이드카 이름은 `istio-proxy` 로 보인다. 둘은 같은 것이다. Istio 는 데이터 플레인
 > proxy 로 Envoy 를 그대로 사용하지만, K8s pod 안에서의 컨테이너 이름표만 `istio-proxy` 로
 > 붙여놓는다 (이미지는 `docker.io/istio/proxyv2:<버전>` 으로 Envoy 를 자체 빌드한 것).
 > 따라서 Istio 컨텍스트에서 "사이드카", "Envoy proxy", "istio-proxy 컨테이너" 는 모두 같은
