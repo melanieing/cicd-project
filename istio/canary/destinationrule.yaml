@@ -1,0 +1,56 @@
+# istio/canary/destinationrule.yaml
+#
+# Istio DestinationRule — `transfer` 서비스 트래픽을 두 subset 으로 나누는 라벨 매핑 정의.
+#
+# 역할
+#   1. transfer 서비스의 K8s Service `transfer.payment-dev` 의 endpoints (= 두 Deployment 의
+#      pod 들) 를 `version` 라벨 값에 따라 두 그룹 (subset) 으로 분류.
+#   2. VirtualService 의 weight 라우팅이 "subset 이름" 단위로 트래픽을 분배할 수 있게 함.
+#
+# 즉 본 매니페스트 자체는 "트래픽 분배" 를 안 한다. 트래픽 분배는 virtualservice.yaml 의 weight 가
+# 결정하고, 본 DestinationRule 은 단지 "이 라벨이면 stable, 저 라벨이면 canary" 라는 사전 정의서.
+#
+# 적용 대상
+#   - host: payment-dev namespace 안의 K8s Service `transfer` (FQDN: transfer.payment-dev.svc.cluster.local)
+#   - subset stable : pod label `version=stable` (chart 의 transfer Deployment 가 박는 라벨)
+#   - subset canary : pod label `version=canary` (istio/canary/transfer-canary.yaml 의 Deployment 가 박는 라벨)
+#
+# 참고
+#   본 DestinationRule 은 connectionPool / outlierDetection 같은 회로 차단·격리 정책의
+#   집을 두기에도 적합한 곳이다. EPIC 8 의 Task 8.2 (Circuit Breaker) 와 8.6 (outlierDetection) 이
+#   본 매니페스트에 trafficPolicy 를 추가하는 형태로 진화한다.
+#
+# 적용 명령
+#   kubectl -n payment-dev apply -f istio/canary/destinationrule.yaml
+
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: transfer
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "6"
+spec:
+  # host — 어떤 K8s Service 의 트래픽을 다룰지 명시.
+  # FQDN 으로 적어도 되고 short name 으로 적어도 같은 namespace 안에서는 동일 의미.
+  host: transfer.payment-dev.svc.cluster.local
+
+  # ---------------------------------------------------------------------------
+  # subsets — 같은 Service 의 endpoint 들을 라벨로 분류
+  # ---------------------------------------------------------------------------
+  # 각 subset 의 `name` 이 VirtualService 의 `route.destination.subset` 가 가리키는 키가 된다.
+  # 그래서 subset name 은 VirtualService 와 정확히 일치해야 함.
+  subsets:
+    # 안정 버전 — chart 가 만드는 정상 Deployment.
+    # values.yaml 의 services.transfer.version: stable 가 pod template 에 version=stable 라벨을 박는다.
+    - name: stable
+      labels:
+        version: stable
+
+    # Canary — istio/canary/transfer-canary.yaml 이 만드는 별도 Deployment.
+    # 이 Deployment 는 stable 과 같은 image 를 쓰되 SERVICE_VERSION=canary env 와
+    # version=canary 라벨을 박는다.
+    - name: canary
+      labels:
+        version: canary

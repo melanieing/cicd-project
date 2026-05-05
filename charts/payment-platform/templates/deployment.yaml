@@ -52,6 +52,11 @@ spec:
       labels:
         {{- include "payment-platform.selectorLabels" $ | nindent 8 }}
         app.kubernetes.io/component: {{ $name }}
+        # version 라벨 — Istio DestinationRule 의 subset 매칭용 (Task 6.4-6.5 Canary 시연).
+        # values.yaml 에 service 별 `version:` 이 정의되어 있으면 그 값을 쓰고, 없으면 "stable".
+        # canary 측 Deployment 는 chart 가 아니라 istio/canary/transfer-canary.yaml 에서 별도로
+        # 관리하며, 그 매니페스트가 같은 라벨 키 (version) 에 "canary" 를 박는다.
+        version: {{ default "stable" $svc.version | quote }}
       # ---------------------------------------------------------------------------
       # Istio 사이드카 race 회피 (EPIC 6)
       # ---------------------------------------------------------------------------
@@ -106,6 +111,12 @@ spec:
                   key: POSTGRES_PASSWORD
             - name: DATABASE_URL
               value: "postgresql://{{ $.Values.postgres.user }}:$(DB_PASSWORD)@{{ include "payment-platform.dbHost" $ }}:5432/{{ $svc.db }}"
+            # SERVICE_VERSION — Canary 시연 (EPIC 6 Task 6.4-6.5) 용. transfer/main.py 의
+            # /version 엔드포인트가 이 값을 응답에 그대로 노출하므로, 클라이언트가 응답을
+            # 보고 stable / canary 어느 쪽으로 라우팅됐는지 식별 가능.
+            # pod template label `version` 과 같은 값으로 일치시켜 두 채널 (라벨 + 응답) 을 정렬.
+            - name: SERVICE_VERSION
+              value: {{ default "stable" $svc.version | quote }}
           # Liveness — main.py 의 /health (DB 무관, 프로세스 생존 확인)
           livenessProbe:
             httpGet:

@@ -1,0 +1,61 @@
+# istio/canary/virtualservice.yaml
+#
+# Istio VirtualService — `transfer` 서비스의 트래픽 분배 규칙.
+#
+# 역할
+#   같은 Service `transfer.payment-dev` 로 들어오는 모든 HTTP 요청을 DestinationRule 의 두 subset
+#   (stable, canary) 으로 weight 비율에 따라 분배한다.
+#
+# 본 매니페스트의 weight 가 본 시연의 핵심 조작 대상이다.
+#   초기값  : 80 (stable) / 20 (canary)   — 새 버전을 트래픽의 1/5 만 받게 시작
+#   중간    : 50 (stable) / 50 (canary)   — 절반 노출
+#   완전 전환: 0  (stable) / 100 (canary) — 검증 끝, 새 버전이 모든 트래픽 처리
+#
+# 두 가지 weight 조정 방식
+#   (a) 본 파일을 직접 수정 후 git PR/머지 → ArgoCD 자동 sync (운영 정석)
+#   (b) 시연 중에는 `scripts/set-canary-weight.sh` 의 kubectl patch 로 실시간 변경 (빠름, 임시)
+#
+# 적용 대상
+#   - hosts: transfer.payment-dev (해당 K8s Service 로 가는 모든 트래픽)
+#   - mesh 안의 사이드카는 본 VirtualService 를 자동 인지 (RDS 로 받음)
+#
+# 적용 명령
+#   kubectl -n payment-dev apply -f istio/canary/virtualservice.yaml
+
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: transfer
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "6"
+spec:
+  # ---------------------------------------------------------------------------
+  # hosts — 본 VirtualService 가 매칭할 destination
+  # ---------------------------------------------------------------------------
+  # K8s Service 이름 그대로 적으면 같은 namespace 안의 모든 사이드카가 인지.
+  # 다른 namespace 에서도 보이게 하려면 FQDN (transfer.payment-dev.svc.cluster.local) 명시.
+  # 본 시연은 payment-dev 안에서만 호출하므로 short name 으로 충분.
+  hosts:
+    - transfer.payment-dev.svc.cluster.local
+
+  # ---------------------------------------------------------------------------
+  # http — HTTP 트래픽 라우팅 규칙
+  # ---------------------------------------------------------------------------
+  # 본 시연은 단순 weight 분배 한 가지 규칙만. 실 운영에서는 header / query 매칭으로
+  # 특정 사용자만 canary 로 보내는 등의 복잡한 규칙도 가능 (예: header 'x-canary: true' 인 요청만).
+  http:
+    - name: weighted-routing
+      route:
+        # ↓ 시연 중 이 두 weight 숫자만 조정한다 (합이 100 이어야 함).
+        - destination:
+            host: transfer.payment-dev.svc.cluster.local
+            # subset 이름은 destinationrule.yaml 의 subsets[].name 과 완전 일치해야 함.
+            subset: stable
+          weight: 80
+
+        - destination:
+            host: transfer.payment-dev.svc.cluster.local
+            subset: canary
+          weight: 20

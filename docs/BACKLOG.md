@@ -80,8 +80,8 @@
 | 6.1 | ✅ **ADR 0003: Istio vs Linkerd 비교** | A1-M1 | `docs/adr/0003-mesh-istio-vs-linkerd.md` |
 | 6.2 | ✅ (가이드) Istio 1.29.2 default profile 설치 가이드 (`istioctl install`) | A1-M2 | `docs/setup/istio-install.md` (사용자 실제 설치 검증은 별도) |
 | 6.3 | ✅ (가이드) `payment-dev`, `payment-prod` 사이드카 자동 주입 라벨 + chart 의 `holdApplicationUntilProxyStarts` annotation | A1-M2 | `docs/setup/istio-install.md` § 4 + `charts/payment-platform/templates/deployment.yaml` |
-| 6.4 | `transfer` v1/v2 두 버전 빌드 + 배포 | A1-M3 | values 파일 |
-| 6.5 | VirtualService + DestinationRule (Canary 20→50→100%) | A1-M3, B3-O3 | `istio/canary/*.yaml` |
+| 6.4 | ✅ `transfer` 두 인스턴스 (stable / canary) — chart 가 stable, `istio/canary/transfer-canary.yaml` 가 canary. 같은 image 에 SERVICE_VERSION env 만 다르게 + `/version` 엔드포인트로 응답 차이 가시화 | A1-M3 | `services/transfer/main.py`, `charts/payment-platform/templates/deployment.yaml`, `charts/payment-platform/values.yaml`, `istio/canary/transfer-canary.yaml` |
+| 6.5 | ✅ VirtualService + DestinationRule (Canary 20→50→100) + 빠른 weight 변경 스크립트 + 100 회 분포 측정 스크립트 + 시연 절차 README | A1-M3, B3-O3 | `istio/canary/destinationrule.yaml`, `istio/canary/virtualservice.yaml`, `istio/canary/scripts/set-canary-weight.sh`, `istio/canary/scripts/test-traffic-split.sh`, `istio/canary/README.md` |
 | 6.6 | PeerAuthentication STRICT mTLS | A1-O1 | `istio/peerauth.yaml` |
 | 6.7 | Kiali에서 mTLS lock 아이콘 + 트래픽 분배 캡처 | A1-O1 | 스크린샷 |
 | 6.8 | **블루-그린 라우팅** (`account` 서비스 100% 즉시 전환) + 전환 스크립트 | A1-O2 | `istio/blue-green/`, `scripts/switch-bluegreen.sh` |

@@ -1,0 +1,137 @@
+# istio/canary/transfer-canary.yaml
+#
+# transfer 서비스의 Canary 측 Deployment.
+#
+# 본 매니페스트는 chart 가 만드는 stable 측 Deployment 와 **다음 한 가지만 다르고 나머지는 동일** 하다:
+#   - metadata.name        : transfer-canary  (vs chart 의 'transfer')
+#   - pod label `version`  : canary           (vs chart 의 'stable')
+#   - env  SERVICE_VERSION : canary           (vs chart 의 'stable')
+#   - replicas             : 1                (vs chart 의 2 — Canary 는 트래픽 비율이 작아 1 개로 충분)
+#
+# 그 외 (image, configmap, secret, securityContext, sidecar annotation, probes 등) 는 chart 의
+# stable Deployment 와 정확히 동일. helm template 이 만드는 결과를 모방한 형태.
+#
+# 적용 시점
+#   1. Chart (Helm/ArgoCD) 가 stable Deployment 를 띄운 다음
+#   2. 본 매니페스트를 같은 namespace 에 apply 하면 `transfer-canary` Deployment 1 개가 추가됨
+#   3. K8s Service `transfer` 의 selector 가 `app.kubernetes.io/component=transfer` 만 보고 version 은
+#      안 보므로 — stable + canary 두 종류 pod 가 모두 endpoint 에 들어감
+#   4. DestinationRule 이 version 라벨로 두 그룹을 나누고
+#   5. VirtualService 가 weight 로 분배
+#
+# 시연 끝난 후 정리
+#   kubectl -n payment-dev delete -f istio/canary/transfer-canary.yaml
+#
+# image 태그 동기화
+#   본 매니페스트의 imageTag (아래 '${IMAGE_TAG}' 자리) 는 stable 의 imageTag 와 동일해야 한다.
+#   같은 image 를 두 Deployment 에 띄우는 것이 핵심 (= 코드는 같고 env 만 다른 시연).
+#   적용 절차의 README.md § 시연 진행 에서 envsubst 로 자동 치환 또는 수동 sed 로 갱신.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transfer-canary
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/name: payment-platform
+    app.kubernetes.io/instance: payment
+    app.kubernetes.io/managed-by: kustomize-or-direct-apply
+    app.kubernetes.io/part-of: payment-platform
+    app.kubernetes.io/component: transfer
+    # version 라벨 — DestinationRule 의 subset canary 매칭용 (이게 핵심)
+    version: canary
+    epic: "6"
+spec:
+  replicas: 1
+  # selector 는 stable 과 분리되어야 — 같은 selector 를 쓰면 stable / canary 의 ReplicaSet 이
+  # 서로의 pod 를 자기 것으로 인식하는 카오스. matchLabels 에 version=canary 를 박아 격리.
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: payment
+      app.kubernetes.io/name: payment-platform
+      app.kubernetes.io/component: transfer
+      version: canary
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        # K8s Service `transfer` 의 selector 가 component=transfer 만 보고 version 은 안 봐서
+        # 본 pod 도 그 Service 의 endpoint 에 들어간다. version=canary 가 DestinationRule 매칭 키.
+        app.kubernetes.io/instance: payment
+        app.kubernetes.io/name: payment-platform
+        app.kubernetes.io/component: transfer
+        version: canary
+      annotations:
+        # 사이드카 race 회피 — chart 의 stable Deployment 와 동일 이유 (자세한 설명은 chart 주석 참조)
+        proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
+    spec:
+      serviceAccountName: default
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: transfer
+          # IMAGE_TAG 는 README.md 의 시연 절차에서 envsubst 로 채우거나, 본 파일을 직접 수정해 적용.
+          # 핵심: stable 과 동일한 sha 를 쓸 것 — 그래야 "코드는 같고 env 만 다른 canary" 가 시연됨.
+          image: "ghcr.io/melanieing/transfer:${IMAGE_TAG}"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            # stable 과 같은 ConfigMap 을 공유 — DOMAIN_ACTION, NOTIFICATION_URL, LOG_LEVEL 등 모두 동일
+            - configMapRef:
+                name: transfer-config
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              # stable 과 같은 DB (transfer_db) 를 공유. canary 가 DB 스키마를 다르게 쓰는 시연이 필요하면
+              # 별도 DB 를 만들어야 하지만, 본 시연은 트래픽 분배 검증이 목적이라 같은 DB 사용.
+              value: "postgresql://payment:$(DB_PASSWORD)@postgres.payment-dev.svc.cluster.local:5432/transfer_db"
+            # ★ 핵심 — 이 한 줄이 stable 과 canary 의 응답을 다르게 만든다.
+            - name: SERVICE_VERSION
+              value: "canary"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
