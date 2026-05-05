@@ -124,7 +124,7 @@ Made this installation the default for cluster.
 
 소요 시간: 메모리 여유에 따라 **30 초 ~ 2 분**. 끝나지 않고 5 분 이상 걸리면 §6 트러블슈팅 참조.
 
-### 2-3. 설치 검증 (4 단계)
+### 2-3. 설치 검증 (3 단계)
 
 #### 2-3-1. pods 모두 Running
 
@@ -157,23 +157,14 @@ kubectl get crd | grep istio.io | wc -l
 - `peerauthentications.security.istio.io`
 - `authorizationpolicies.security.istio.io`
 
-#### 2-3-3. `istioctl verify-install` 통과
+#### 2-3-3. 컨트롤 플레인이 cluster 의 사이드카를 인지
 
-```bash
-istioctl verify-install
-```
-
-**기대 출력 마지막 줄**:
-
-```
-Checked X custom resource definitions
-Checked Y deployments
-✔ Istio is installed and verified successfully
-```
-
-`X` `Y` 의 정확한 숫자는 버전 따라 변동.
-
-#### 2-3-4. 컨트롤 플레인이 cluster 의 사이드카를 인지
+> **참고**: 이전 Istio 버전 (~1.22) 까지 있던 `istioctl verify-install` 명령은
+> 1.23 부터 deprecated 되어 1.29 에는 완전히 제거됐다. 그 역할 (Istio 가 제대로
+> 설치되었는지 확인) 은 이미 위의 § 2-3-1 (pods Running) + § 2-3-2 (CRD 등록)
+> 와 본 § 2-3-3 의 `proxy-status` 조합으로 충분히 검증된다. 만약 cluster 의
+> Istio 설정 자체에 문제가 있는지 분석이 필요하다면 `istioctl analyze` (옛
+> verify-install 의 일부 기능을 흡수한 후속) 을 사용한다.
 
 ```bash
 istioctl proxy-status
