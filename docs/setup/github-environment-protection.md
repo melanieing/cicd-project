@@ -57,13 +57,16 @@ jobs:
 
 다음 스크린샷을 본 폴더에 저장:
 
-| 스크린샷 | 캡처 내용 | 파일 |
-|---|---|---|
-| Pending approval 화면 | Actions 탭의 workflow run 페이지에서 "Review deployments" 버튼 + reviewers 목록 | `docs/screenshots/gh-env-pending.png` |
-| 승인 후 진행 화면 | 같은 run 페이지의 promote-to-prod job 이 진행 → 완료 표시 | `docs/screenshots/gh-env-approved.png` |
-| Environments 설정 | Settings → Environments → production 의 Required reviewers 화면 | `docs/screenshots/gh-env-config.png` |
+| 스크린샷 | 캡처 내용 | 파일 | 상태 |
+|---|---|---|---|
+| Environments 설정 | Settings → Environments → production 의 Required reviewers + main branch 제한 화면 | `docs/screenshots/gh-env-config.png` | ✅ 완료 (1인 admin/reviewer 라 "Allow administrators to bypass" 체크는 본 데모에서는 효과 없음) |
+| Pending approval 화면 | Actions 탭의 workflow run 페이지에서 "Review deployments" 버튼 + reviewers 목록 | `docs/screenshots/gh-env-pending.png` | ⬜ cd.yml 의 prod job 첫 실행 시 캡처 |
+| 승인 후 진행 화면 | 같은 run 페이지의 promote-to-prod job 이 진행 → 완료 표시 | `docs/screenshots/gh-env-approved.png` | ⬜ 같은 run 의 승인 후 화면 |
 
-> 본 README 는 캡처 위치만 지정한다. 실제 캡처는 사용자가 cd.yml 도입 후 생성.
+> config 캡처는 environment 설정만 끝나면 바로 가능 (위 §1 절차로 완료).
+> pending/approved 두 장은 `environment: production` 키를 사용하는 GitHub Actions job 이
+> 실제로 실행되어야 화면이 만들어지므로, 본 EPIC 5 시점이 아니라
+> cd.yml (또는 ci.yml 의 deploy job 추가) 도입 시점에 채운다.
 
 ## 4. 권한 이슈와 흔한 함정
 

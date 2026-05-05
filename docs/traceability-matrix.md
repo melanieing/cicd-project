@@ -16,7 +16,7 @@
 | B1-M2 | [필] | GHA pipeline (test→build→push→deploy) + path filter | 1.5, 3.0, 3.1, 3.3 | `services/*/tests/`, `.github/workflows/ci.yml` | ⬜ |
 | B1-M3 | [필] | Slack `#deploy-status` 알림 | 3.6 | `.github/workflows/ci.yml` | ⬜ |
 | B1-O1 | [선→필] | 4서비스 병렬 + 시간 측정 | 3.2 | `docs/metrics/ci-parallelization.md` | ⬜ |
-| B1-O2 | [선→필] | prod GitHub Environment Protection | 5.5 | `docs/setup/github-environment-protection.md` (가이드 ✅) + 스크린샷 (TBD) | 🟡 |
+| B1-O2 | [선→필] | prod GitHub Environment Protection | 5.5 | `docs/setup/github-environment-protection.md` (가이드 ✅) + `docs/screenshots/gh-env-config.png` (config 1/3 ✅) + pending/approved 캡처 2/3 (cd.yml 도입 후) | 🟡 |
 
 ### B2. 컨테이너/레지스트리
 
@@ -36,8 +36,8 @@
 | B3-M1 | [필] | HPA CPU 70%, 2~10 | 4.3 | `charts/payment-platform/templates/hpa.yaml` | ⬜ |
 | B3-M2 | [필] | Readiness/Liveness | 1.1, 1.4, 4.4 | Deployment 템플릿 | ⬜ |
 | B3-M3 | [필] | Helm + RollingUpdate | 4.1, 4.2, 4.6 | `charts/payment-platform/` | ⬜ |
-| B3-O1 | [선→필] | ArgoCD GitOps 사이클 | 5.1, 5.2, 5.3, 5.4 | `argocd/values.yaml`, `argocd/install.md`, `argocd/root-app.yaml`, `argocd/applications/payment-{dev,prod}.yaml`, `argocd/projects/payment-platform.yaml` | 🟡 (cluster apply 검증은 사용자) |
-| B3-O2 | [선→필] | dev/prod values + ArgoCD App | 4.5, 5.2 | `charts/payment-platform/values-{dev,prod}.yaml` ✅, `argocd/applications/payment-{dev,prod}.yaml` ✅ | 🟡 |
+| B3-O1 | [선→필] | ArgoCD GitOps 사이클 | 5.1, 5.2, 5.3, 5.4 | `argocd/values.yaml`, `argocd/install.md`, `argocd/root-app.yaml`, `argocd/applications/payment-{dev,prod}.yaml`, `argocd/projects/payment-platform.yaml` (kind cluster 에서 3개 Application 모두 Synced/Healthy 확인) | ✅ |
+| B3-O2 | [선→필] | dev/prod values + ArgoCD App | 4.5, 5.2 | `charts/payment-platform/values-{dev,prod}.yaml`, `argocd/applications/payment-{dev,prod}.yaml` (양쪽 namespace 에 helm 렌더링 + 동기화 확인) | ✅ |
 | B3-O3 | [선→필] | transfer Canary 20→100 | 6.5 | `istio/canary/` | ⬜ |
 
 ---
