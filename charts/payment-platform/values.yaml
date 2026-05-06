@@ -132,6 +132,11 @@ services:
     # K8s service DNS 로 notification 호출. http://<svc>.<ns>.svc.cluster.local:<port>
     # ns 는 Helm 의 .Release.Namespace 이므로 templates/ 에서 동적으로 채움.
     notificationUrl: "from-template"
+    # Canary 시연 (EPIC 6 Task 6.4-6.5) — 본 chart 가 만드는 Deployment 는 stable 측.
+    # canary 측은 istio/canary/transfer-canary.yaml 에서 별도 Deployment 로 띄운다.
+    # values 에 명시 안 해도 deployment template 의 default 가 "stable" 이라 동일하지만,
+    # canary 시연을 의식하는 reader 를 위해 명시.
+    version: stable
 
   loan:
     domainAction: apply      # POST /apply

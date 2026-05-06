@@ -49,6 +49,14 @@ DOMAIN_ACTION: str = os.getenv("DOMAIN_ACTION", "transfer")
 DB_POOL_MIN: int = int(os.getenv("DB_POOL_MIN", "1"))
 DB_POOL_MAX: int = int(os.getenv("DB_POOL_MAX", "5"))
 
+# 본 서비스 인스턴스의 "버전 표지" — Canary 배포 (EPIC 6 Task 6.4-6.5) 시연용.
+# 같은 코드/이미지를 두 Deployment 로 띄우되 stable 은 SERVICE_VERSION=stable,
+# canary 는 SERVICE_VERSION=canary 로 환경변수만 다르게 설정한다.
+# 그러면 /version 엔드포인트의 응답으로 "지금 트래픽이 어느 subset 으로 라우팅됐는지"
+# 가 가시적으로 드러나, Istio VirtualService 의 weight 조정이 실제 동작함을 입증한다.
+# 비어있으면 "unknown" 으로 폴백하여 mesh 미적용 환경 (단순 로컬 실행) 에서도 안전.
+SERVICE_VERSION: str = os.getenv("SERVICE_VERSION", "unknown")
+
 # 알림 서비스의 HTTP base URL.
 # 빈 문자열이면 알림 호출을 스킵 (graceful skip — 로컬에서 transfer 단독 테스트 가능).
 # K8s 환경 예: http://notification.payment-dev.svc.cluster.local:8000
@@ -121,6 +129,30 @@ app = FastAPI(title=f"{SERVICE_NAME}-service", lifespan=lifespan)
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": SERVICE_NAME}
+
+
+# ---------------------------------------------------------------------------
+# Canary 시연용 — /version
+#
+# Istio 의 VirtualService 가중치 라우팅이 실제로 동작함을 눈으로 확인하기 위한
+# 가벼운 readonly 엔드포인트. 응답은 단순히 본 인스턴스의 SERVICE_NAME +
+# SERVICE_VERSION 을 JSON 으로 돌려준다.
+#
+# 운영 가정:
+#   - 같은 image 를 두 Deployment (transfer-stable / transfer-canary) 로 띄움
+#   - 두 Deployment 의 env SERVICE_VERSION 만 다르게 설정 (stable / canary)
+#   - 두 pod 모두 같은 K8s Service `transfer` 의 endpoint 가 됨
+#   - DestinationRule 이 version 라벨로 두 subset 을 나누고, VirtualService 가
+#     weight (예: 80/20 → 50/50 → 0/100) 로 트래픽을 분배
+#   - 클라이언트가 /version 을 N 회 호출 후 응답 분포를 보면 weight 비율과 일치해야 함
+#
+# 본 엔드포인트는 readiness 와 의도적으로 분리되어 있다 — readiness 는 DB 연결을
+# 검사하지만 /version 은 그 의존성을 타지 않는다. canary 시연 중 DB 가 잠시
+# 흔들려도 트래픽 분배 자체는 확인 가능해야 하기 때문.
+# ---------------------------------------------------------------------------
+@app.get("/version")
+async def version() -> dict[str, str]:
+    return {"service": SERVICE_NAME, "version": SERVICE_VERSION}
 
 
 @app.get("/health/ready")

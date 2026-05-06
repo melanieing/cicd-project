@@ -20,6 +20,8 @@ os.environ["DOMAIN_ACTION"] = "transfer"
 os.environ["DATABASE_URL"] = ""
 # 핵심: 빈 값으로 강제해 graceful "skipped" 분기를 검증 가능하게 함.
 os.environ["NOTIFICATION_URL"] = ""
+# Canary 시연용 SERVICE_VERSION (EPIC 6) — 테스트에서는 명시적 값으로 고정.
+os.environ["SERVICE_VERSION"] = "test-stable"
 
 from fastapi.testclient import TestClient  # noqa: E402
 from main import app  # noqa: E402
@@ -31,6 +33,18 @@ def test_health_returns_ok() -> None:
         r = client.get("/health")
         assert r.status_code == 200
         assert r.json() == {"status": "ok", "service": "transfer"}
+
+
+def test_version_returns_service_and_version() -> None:
+    """/version 엔드포인트가 SERVICE_VERSION env 값을 그대로 응답에 포함.
+
+    Canary 시연에서 클라이언트가 응답을 보고 "이 요청이 stable 로 갔는지 canary 로
+    갔는지" 를 식별하는 핵심 채널이라, env 값이 응답에 정확히 그대로 노출되어야 함.
+    """
+    with TestClient(app) as client:
+        r = client.get("/version")
+        assert r.status_code == 200
+        assert r.json() == {"service": "transfer", "version": "test-stable"}
 
 
 def test_transfer_action_skips_notification_when_url_unset() -> None:
