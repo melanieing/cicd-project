@@ -57,6 +57,30 @@ FROM python:3.14-slim-bookworm AS runtime
 LABEL org.opencontainers.image.source="https://github.com/melanieing/cicd-project" \
       org.opencontainers.image.licenses="MIT"
 
+# -----------------------------------------------------------------------------
+# OS 보안 패치 (Trivy HIGH/CRITICAL 게이트 통과)
+# -----------------------------------------------------------------------------
+# base image (python:3.14-slim-bookworm) 에는 Debian 12 의 OS 패키지가 들어있는데,
+# Debian 이 보안 패치를 발행한 직후 ~ Docker 가 base image 를 재빌드하기 전까지의 시간 창에는
+# 패치 안 된 옛 패키지가 남아있다. 그 창에서 Trivy 가 HIGH/CRITICAL 을 잡아 CI 를 막는다.
+#   예) 2026-05-31 시점 libgnutls30 3.7.9-2+deb12u6 (취약) → +deb12u7 (패치)
+#       CVE-2026-33845 / CVE-2026-42010 (CRITICAL) 외 3 HIGH 차단.
+#
+# `apt-get upgrade` 로 빌드 시점에 OS 패키지를 최신 보안 패치로 끌어올린다.
+# base image 가 패치를 포함해 재빌드되면 이 단계는 사실상 no-op 이 되어 비용 ~0.
+#
+# [장기 대안 — 본 프로젝트 backlog 후보]
+#   - distroless / Chainguard(Wolfi) 같은 zero-CVE 지향 base image 로 교체 시 이 RUN 불필요.
+#   - 다만 apt 부재 + 디버깅 난이도 상승이라, 별도 EPIC 으로 평가 후 도입.
+#
+# [Bash/apt 메모]
+#   - `apt-get upgrade -y` : 설치된 모든 패키지를 가능한 최신 버전으로 (보안 패치 포함). -y 는 무확인.
+#   - `rm -rf /var/lib/apt/lists/*` : apt 캐시 삭제로 image layer 크기 절감 + 캐시발 CVE 오탐 회피.
+#   - `--no-install-recommends` 는 install 에만 의미 있어 upgrade 에는 생략.
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
+
 # 비루트 사용자 생성. UID 1001 / GID 1001 / 홈디렉토리 미생성(-M) / 셸 nologin
 # K8s 의 securityContext.runAsUser/runAsGroup 와 일치시켜 podSecurityPolicy 를 통과.
 ARG APP_UID=1001
