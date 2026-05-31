@@ -1,0 +1,36 @@
+# istio/blue-green/virtualservice.yaml
+#
+# VirtualService — account 서비스의 트래픽 분배. Blue-Green 은 weight 가 100/0 또는 0/100
+# 두 가지 상태만 가짐 (중간값 없음 — 그건 Canary 의 영역).
+#
+# 본 파일의 초기 상태는 blue=100 / green=0 (= chart 의 라이브 측이 모든 트래픽 받음).
+# scripts/switch-bluegreen.sh 가 weight 를 뒤집어 즉시 전환.
+#
+# 적용 명령
+#   kubectl -n payment-dev apply -f istio/blue-green/virtualservice.yaml
+
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: account
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "6"
+spec:
+  hosts:
+    - account.payment-dev.svc.cluster.local
+
+  http:
+    - name: blue-green-routing
+      route:
+        # ↓ scripts/switch-bluegreen.sh 가 두 weight 를 100↔0 으로 뒤집는다.
+        - destination:
+            host: account.payment-dev.svc.cluster.local
+            subset: blue
+          weight: 100
+
+        - destination:
+            host: account.payment-dev.svc.cluster.local
+            subset: green
+          weight: 0

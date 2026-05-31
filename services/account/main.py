@@ -56,6 +56,13 @@ DOMAIN_ACTION: str = os.getenv("DOMAIN_ACTION", "process")
 DB_POOL_MIN: int = int(os.getenv("DB_POOL_MIN", "1"))
 DB_POOL_MAX: int = int(os.getenv("DB_POOL_MAX", "5"))
 
+# 본 서비스 인스턴스의 "버전 표지" — Blue-Green 배포 (EPIC 6 Task 6.8) 시연용.
+# 같은 코드/이미지를 두 Deployment (account-blue / account-green) 로 띄우되 환경변수만
+# 다르게 설정한다. /version 엔드포인트의 응답으로 "지금 트래픽이 어느 색깔로 갔는지" 가
+# 가시화되어, Istio VirtualService 의 즉시 100% 전환이 실제 동작함을 입증한다.
+# 비어있으면 "unknown" — 메시 미적용 환경 (단순 로컬 실행) 에서도 안전.
+SERVICE_VERSION: str = os.getenv("SERVICE_VERSION", "unknown")
+
 
 # ---------------------------------------------------------------------------
 # 로깅 설정
@@ -130,6 +137,27 @@ app = FastAPI(title=f"{SERVICE_NAME}-service", lifespan=lifespan)
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": SERVICE_NAME}
+
+
+# ---------------------------------------------------------------------------
+# Blue-Green 시연용 — /version
+#
+# Istio VirtualService 의 100% 즉시 전환이 실제로 동작함을 눈으로 보기 위한
+# readonly 엔드포인트. 응답은 본 인스턴스의 SERVICE_NAME + SERVICE_VERSION (blue / green).
+#
+# 운영 가정:
+#   - 같은 image 를 두 Deployment (account-blue / account-green) 로 띄움
+#   - 두 Deployment 의 env SERVICE_VERSION 만 다름 (blue 또는 green)
+#   - 두 pod 모두 같은 K8s Service `account` 의 endpoint
+#   - DestinationRule 이 version 라벨로 두 subset 분류, VirtualService 가 100/0 또는 0/100
+#   - 전환 후 클라이언트가 /version 을 N 회 호출하면 100% 한쪽 응답만 보여야 함
+#
+# /health 와 분리: /version 은 DB 의존성 없음. blue-green 전환 시점에 DB 가 잠시 흔들려도
+# 트래픽 라우팅 자체는 검증 가능.
+# ---------------------------------------------------------------------------
+@app.get("/version")
+async def version() -> dict[str, str]:
+    return {"service": SERVICE_NAME, "version": SERVICE_VERSION}
 
 
 # ---------------------------------------------------------------------------

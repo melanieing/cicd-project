@@ -125,6 +125,10 @@ services:
     domainAction: open       # POST /open
     db: account_db
     notificationUrl: ""      # 호출 안 함
+    # Blue-Green 시연 (EPIC 6 Task 6.8) — chart 가 만드는 Deployment 는 blue 측.
+    # green 측은 istio/blue-green/account-green.yaml 에서 별도 Deployment 로 띄운다.
+    # blue 가 "현재 production 라이브" 의 의미. 전환 후에는 green 이 라이브가 되고 blue 가 idle 이 됨.
+    version: blue
 
   transfer:
     domainAction: transfer   # POST /transfer

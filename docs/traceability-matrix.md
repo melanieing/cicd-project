@@ -51,8 +51,8 @@
 | A1-M1 | [필] | Istio vs Linkerd ADR | 6.1 | `docs/adr/0003-mesh-istio-vs-linkerd.md` | ✅ |
 | A1-M2 | [필] | Istio 설치 + 사이드카 자동주입 | 6.2, 6.3 | `docs/setup/istio-install.md` (가이드 ✅) + 사용자 클러스터 설치 + 사이드카 주입 검증 (모든 사이드카 SUBSCRIBED `4 (CDS,LDS,EDS,RDS)` 확인) | ✅ |
 | A1-M3 | [필] | VS+DR Canary 20→50→100 | 6.4, 6.5 | `istio/canary/destinationrule.yaml`, `istio/canary/virtualservice.yaml`, `istio/canary/transfer-canary.yaml`, `istio/canary/scripts/{set-canary-weight,test-traffic-split}.sh`, `istio/canary/README.md`, `services/transfer/main.py` (/version 엔드포인트), `charts/payment-platform/templates/deployment.yaml` (version 라벨 + SERVICE_VERSION env). 사용자 실제 시연 캡처 (TBD) | 🟡 |
-| A1-O1 | [선→필] | mTLS STRICT + Kiali 확인 | 6.6, 6.7 | `istio/peerauth.yaml` + 캡처 | ⬜ |
-| A1-O2 | [선→필] | 블루-그린 + 관측성 강화 | 6.8 | `istio/blue-green/`, `scripts/switch-bluegreen.sh` | ⬜ |
+| A1-O1 | [선→필] | mTLS STRICT + Kiali 확인 | 6.6, 6.7 | `istio/peerauth.yaml`, `istio/peerauth-verify.md`, `observability/kiali/values.yaml`, `observability/kiali/install.md`. 사용자 클러스터 적용 + Kiali 캡처 (TBD) | 🟡 |
+| A1-O2 | [선→필] | 블루-그린 + 관측성 강화 | 6.8 | `services/account/main.py` (/version), `charts/payment-platform/values.yaml` (account.version=blue), `istio/blue-green/{account-green,destinationrule,virtualservice}.yaml`, `scripts/{switch-bluegreen,test-bluegreen}.sh`, `istio/blue-green/README.md`. 사용자 클러스터에서 100/0 전환 + 롤백 시연 캡처 (TBD) | 🟡 |
 
 ### A2. 메시 운영/모니터링
 

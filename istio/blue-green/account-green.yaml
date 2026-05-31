@@ -1,0 +1,128 @@
+# istio/blue-green/account-green.yaml
+#
+# account 서비스의 Green (대기 후보) 측 Deployment.
+#
+# Blue-Green 패턴이란
+#   같은 코드/이미지를 두 Deployment 로 띄우되 "라이브" 와 "대기" 를 둔다.
+#     blue  = 현재 production 트래픽을 받고 있는 라이브 측 (chart 의 account Deployment)
+#     green = 새 버전을 미리 띄워둔 대기 측 (본 매니페스트)
+#   준비가 끝나면 VirtualService 의 weight 를 한 번에 (100→0 / 0→100) 뒤집어 트래픽 전환.
+#   문제가 발생하면 weight 를 다시 뒤집어 즉시 blue 로 복귀 (= 인스턴트 롤백).
+#
+# Canary 와의 차이
+#   Canary  = 점진적 (20 → 50 → 100), 새 버전이 문제 있으면 일부 사용자만 영향
+#   Blue-Green = 즉시 100% (전부 한 번에), 문제 있으면 모든 사용자 영향이지만 롤백도 즉시
+#
+# 적용 시점
+#   1. Chart (Helm/ArgoCD) 가 account-blue (실제 이름: `account`) Deployment 를 띄운 다음
+#   2. 본 매니페스트를 같은 namespace 에 apply 하면 `account-green` Deployment 1 개가 추가됨
+#   3. 두 Deployment 의 pod 가 모두 K8s Service `account` 의 endpoint 가 됨
+#   4. DestinationRule 이 version 라벨로 둘을 분류
+#   5. VirtualService 의 weight 가 어느 쪽으로 보낼지 결정 (시연 시점: blue=100, green=0)
+#   6. scripts/switch-bluegreen.sh 가 weight 를 뒤집어 즉시 전환
+#
+# image 태그
+#   본 매니페스트의 `${IMAGE_TAG}` 자리표시자는 README.md 의 시연 절차에서 envsubst 로 채운다.
+#   blue 와 green 이 같은 sha 를 쓰는 게 본 시연의 핵심 (코드는 같고 SERVICE_VERSION env 만 다름).
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: account-green
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/name: payment-platform
+    app.kubernetes.io/instance: payment
+    app.kubernetes.io/component: account
+    app.kubernetes.io/part-of: payment-platform
+    # version 라벨 — DestinationRule 의 subset green 매칭용
+    version: green
+    epic: "6"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: payment
+      app.kubernetes.io/name: payment-platform
+      app.kubernetes.io/component: account
+      version: green
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: payment
+        app.kubernetes.io/name: payment-platform
+        app.kubernetes.io/component: account
+        version: green
+      annotations:
+        # 사이드카 race 회피 — Native Sidecar 환경에서는 무해, 옛 K8s 호환성용
+        proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
+    spec:
+      serviceAccountName: default
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: account
+          # ${IMAGE_TAG} 는 README.md 시연 절차에서 envsubst 로 치환. blue 와 같은 sha 필수.
+          image: "ghcr.io/melanieing/account:${IMAGE_TAG}"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            # blue 와 같은 ConfigMap (DOMAIN_ACTION, NOTIFICATION_URL, LOG_LEVEL 등) 공유
+            - configMapRef:
+                name: account-config
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              # blue 와 같은 DB (account_db). 본 시연은 라우팅 검증이라 같은 DB 공유.
+              value: "postgresql://payment:$(DB_PASSWORD)@postgres.payment-dev.svc.cluster.local:5432/account_db"
+            # ★ 핵심 — 이 한 줄이 blue 와 green 의 응답을 다르게 만든다.
+            - name: SERVICE_VERSION
+              value: "green"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
