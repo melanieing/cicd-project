@@ -1,0 +1,28 @@
+# istio/blue-green/destinationrule.yaml
+#
+# DestinationRule — account 서비스의 두 subset (blue, green) 라벨 매핑.
+# Canary 의 DestinationRule 과 같은 구조, value 만 stable/canary → blue/green 으로 교체.
+#
+# 적용 명령
+#   kubectl -n payment-dev apply -f istio/blue-green/destinationrule.yaml
+
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: account
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "6"
+spec:
+  host: account.payment-dev.svc.cluster.local
+  subsets:
+    # 현재 production 라이브 측. chart 의 account Deployment (version=blue 라벨).
+    - name: blue
+      labels:
+        version: blue
+
+    # 대기 후보 측. istio/blue-green/account-green.yaml 의 Deployment (version=green 라벨).
+    - name: green
+      labels:
+        version: green

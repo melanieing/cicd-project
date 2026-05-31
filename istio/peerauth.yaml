@@ -1,0 +1,65 @@
+# istio/peerauth.yaml
+#
+# PeerAuthentication — mesh 안의 서비스 간 통신을 mutual TLS (mTLS) 로 강제하는 정책.
+#
+# 본 매니페스트의 역할
+#   payment-dev / payment-prod namespace 안의 모든 사이드카가 인바운드 요청을 받을 때
+#   **암호화된 mTLS 연결만 허용** 하고, 평문 (plaintext) 요청은 거부하도록 설정한다.
+#
+# Istio 의 mTLS 모드 세 가지
+#   - DISABLE      : 모든 통신 평문. 옛 호환성용. 운영에서 거의 안 씀.
+#   - PERMISSIVE   : 사이드카가 mTLS 와 평문을 둘 다 받음. 마이그레이션 중인 시스템의 임시 상태.
+#                    (예: 일부 서비스만 메시 적용된 상태에서 메시 외부의 클라이언트도 접근 필요)
+#   - STRICT       : mTLS 만 허용. 평문 요청은 거부. **본 매니페스트가 선택하는 모드.**
+#
+# 적용 범위 결정
+#   PeerAuthentication 은 세 가지 범위 중 하나로 적용 가능:
+#     1) mesh 전체     — istio-system 에 두면 cluster 의 모든 namespace 적용
+#     2) namespace 전체 — 본 매니페스트가 선택. payment-dev / payment-prod 각각에 정책 분리.
+#     3) workload 단위 — selector 로 특정 Deployment 만 적용. 보안상 보통 안 씀 (예외 만들기).
+#
+# 본 매니페스트가 namespace 전체를 선택한 이유
+#   - mesh 전체 (1) 로 가면 istio-system 자체에도 STRICT 가 적용돼 ArgoCD 가 ingress gateway
+#     매니페스트를 sync 할 때 일부 internal traffic 이 막힐 수 있음
+#   - workload 단위 (3) 는 새 서비스 추가할 때마다 정책을 또 박아야 해서 사고 위험
+#   - namespace 단위가 운영 직관과 가장 잘 맞음 (각 환경의 보안 정책이 분리됨)
+#
+# 적용 후 검증
+#   1. 사이드카가 있는 메시 내부 통신 → 정상 (mTLS handshake 자동)
+#   2. 사이드카가 없는 외부 pod 에서 평문 호출 → 거부 (connection refused 또는 PROTOCOL_ERROR)
+#   3. `istioctl x authz-check <pod>.<ns>` 로 정책 적용 상태 점검
+#   4. Kiali (Task 6.7) 의 서비스 간 엣지에 자물쇠 아이콘 표시
+#
+# 자세한 검증 절차는 `istio/peerauth-verify.md` 참조 (본 디렉토리에 별도 작성).
+
+---
+# payment-dev namespace 의 모든 워크로드는 mTLS 만 허용
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  # name=default 가 관례 — namespace 의 기본 정책이라는 의미.
+  # 다른 이름을 쓰면 Istio 가 여러 정책을 merge 하면서 의도와 다른 결과가 날 수 있음.
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "6"
+spec:
+  # selector 가 비어있으면 namespace 의 모든 워크로드에 적용 — 본 매니페스트의 의도.
+  # 예외를 두려면 selector.matchLabels 로 좁힐 수 있음 (지금은 안 씀).
+  mtls:
+    mode: STRICT
+
+---
+# payment-prod namespace — 동일 정책 (정책 분리되어 있긴 하지만 두 환경의 보안 수준은 같게 유지)
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: payment-prod
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "6"
+spec:
+  mtls:
+    mode: STRICT

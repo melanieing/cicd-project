@@ -1,0 +1,103 @@
+# observability/kiali/values.yaml
+#
+# Kiali Server Helm chart 의 override values (EPIC 6 Task 6.7).
+#
+# 본 파일의 위치 (`observability/kiali/`) 는 EPIC 7 의 다른 관측 도구 (Prometheus, Grafana, Jaeger)
+# 와 같은 디렉토리 트리에 속한다. EPIC 6 에서 Kiali 만 먼저 띄우는 이유:
+#   - Task 6.7 의 시연 핵심은 mTLS 자물쇠 아이콘 + Canary 트래픽 분배 시각화
+#   - mTLS 자물쇠는 토폴로지 + Prometheus 의 보안 메트릭만 있으면 표시 가능
+#   - Canary 분배 그래프는 트래픽 메트릭이 필요 → 가벼운 Prometheus 도 같이 띄움
+#
+# 단계적 전략
+#   EPIC 6 → 본 파일 + Istio sample 의 lightweight Prometheus (1 replica, 메모리 ~300MiB)
+#   EPIC 7 → kube-prometheus-stack 으로 Prometheus 를 교체 (Grafana / AlertManager 같이 옴)
+#             교체 시 Kiali 의 prometheus.url 만 새 service 로 갱신
+#
+# Helm chart 출처
+#   helm repo add kiali https://kiali.org/helm-charts
+#   helm repo update
+#   helm search repo kiali/kiali-server
+#
+# 본 values 의 적용
+#   helm upgrade --install kiali-server kiali/kiali-server \
+#     --version 2.21.0 \
+#     --namespace istio-system \
+#     -f observability/kiali/values.yaml \
+#     --wait --timeout 5m
+
+# ---------------------------------------------------------------------------
+# auth — 인증 모드
+# ---------------------------------------------------------------------------
+# anonymous : 로그인 없이 누구나 UI 접근. 1 인 데모 + kind 클러스터 + port-forward 한정이라
+#             인증 layer 가 사실상 의미 없어 anonymous 로 시작.
+# 운영에서는 token (K8s ServiceAccount JWT) 또는 OIDC 권장.
+auth:
+  strategy: anonymous
+
+# ---------------------------------------------------------------------------
+# deployment — Kiali 자체의 K8s 리소스 설정
+# ---------------------------------------------------------------------------
+deployment:
+  # kind 1.33 + 16GB 호스트 환경에서 replica 1 이면 충분.
+  # 운영에서는 HA 위해 2 이상 + PodDisruptionBudget.
+  replicas: 1
+
+  # Kiali 가 자기 자신을 자기 mesh 정책으로 잘못 막는 일을 방지.
+  # istio-system 은 사이드카 자동 주입 대상이 아니라 보통 이슈 없지만 명시로 안전성 확보.
+  pod_annotations:
+    sidecar.istio.io/inject: "false"
+
+  # 16GB 호스트에서 다른 컴포넌트와의 리소스 경쟁을 줄이기 위한 제한.
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  # kind 의 단일 노드라 ingress 없이 port-forward 로 접근.
+  # 운영에서는 Gateway + VirtualService 로 정식 노출.
+  service_type: ClusterIP
+
+  # Kiali UI 의 default landing namespace. payment-dev 가 본 시연의 메인 네임스페이스.
+  accessible_namespaces:
+    - payment-dev
+    - payment-prod
+    - istio-system
+
+# ---------------------------------------------------------------------------
+# external_services — Kiali 가 의존하는 외부 컴포넌트
+# ---------------------------------------------------------------------------
+external_services:
+  # Prometheus — 메트릭 출처. EPIC 6 에서는 Istio sample 의 lightweight Prometheus,
+  # EPIC 7 에서 kube-prometheus-stack 으로 교체 시 본 url 만 변경.
+  prometheus:
+    url: "http://prometheus.istio-system:9090"
+    # 캐시 주기 — 운영에서는 30-60s, 시연에서는 짧게 두는 게 변화 관찰에 좋음.
+    cache_duration: 10
+
+  # Grafana — EPIC 7 에서 같이 들어옴. 지금은 비활성화.
+  grafana:
+    enabled: false
+    # 활성화 시 url: "http://grafana.observability:3000"
+
+  # Tracing (Jaeger) — EPIC 7 의 7.4 에서 함께. 지금은 비활성화.
+  tracing:
+    enabled: false
+
+  # istiod — mesh 의 컨트롤 플레인. Kiali 가 mTLS 상태와 정책 검증을 위해 직접 통신.
+  istio:
+    config_map_name: "istio"
+    component_status:
+      enabled: true
+
+# ---------------------------------------------------------------------------
+# server — Kiali API 서버 설정
+# ---------------------------------------------------------------------------
+server:
+  # 모든 클러스터 객체에 대한 read-only 권한만으로 동작. 변경 작업 (예: VS weight 수정) 은
+  # UI 에서 시도하지 못하게 해 운영 사고 위험 감소. 시연에서는 yaml apply / kubectl patch 로 변경.
+  port: 20001
+  # default base path '/kiali'. port-forward 후 http://localhost:20001/kiali 로 접근.
+  web_root: "/kiali"
