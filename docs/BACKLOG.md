@@ -90,12 +90,12 @@
 
 | ID | 태스크 | R-ID | 산출물 |
 |---|---|---|---|
-| 7.1 | `kube-prometheus-stack` Helm 설치 | A2-M2 | `observability/prom/values.yaml` |
-| 7.2 | Envoy CPU/Mem 패널 dashboard | A2-M2 | `observability/grafana-dashboards/*.json` |
-| 7.3 | Kiali 설치 + Prometheus 연동 (서비스 토폴로지 캡처) | A2-M1 | `observability/kiali/values.yaml`, 스크린샷 |
-| 7.4 | Jaeger 설치 + Istio tracing 연동 | A2-O1 | `observability/jaeger/` |
-| 7.5 | 100% 샘플링 → P99 trace 캡처 → 운영용 1% 샘플링 변경 | A2-O1 | `docs/tracing-sampling.md`, 스크린샷 |
-| 7.6 | **병목 구간 정량 분석 리포트** (Jaeger 기반 P99 hotspot 표 + 개선안 3개 + before/after 측정) | A2-O3 | `docs/analysis/bottleneck-report.md` [★] |
+| 7.1 | ✅ `kube-prometheus-stack` 86.x Helm values + 설치 가이드 + sample Prom → 정식 stack cutover 절차 / 🟡 사용자 클러스터 적용 + `/targets` 의 istio-* job UP 캡처 | A2-M2 | `observability/prom/values.yaml`, `observability/prom/install.md` |
+| 7.2 | ✅ Envoy CPU/Mem 패널 dashboard import 절차 (Grafana sidecar discovery 자동) — 표준 Istio dashboard 4 종 (Mesh/Service/Workload/Performance) / 🟡 사용자 ConfigMap apply 후 Grafana UI 캡처 3 장 | A2-M2 | `observability/grafana-dashboards/README.md` (+ ConfigMap 매니페스트는 사용자 작성) |
+| 7.3 | ✅ Kiali 의 Prometheus URL 을 kube-prom-stack 으로 cutover 절차 (`observability/prom/install.md` § 4) / 🟡 사용자 cutover + Graph 캡처 | A2-M1 | `observability/kiali/values.yaml` (URL 갱신), `observability/prom/install.md` § 4 |
+| 7.4 | ✅ Jaeger v2 (All-In-One) Helm values + 설치 가이드 + Istio MeshConfig extensionProviders 등록 + Telemetry CRD (100% 샘플링) / 🟡 사용자 설치 + transfer→notification trace waterfall 캡처 | A2-O1 | `observability/jaeger/values.yaml`, `observability/jaeger/install.md`, `observability/jaeger/istio-tracing.yaml` |
+| 7.5 | ✅ 100% 샘플링 → 1% 샘플링 전환 매니페스트 + 샘플링 정책 근거 문서 / 🟡 사용자 100%/1% 단계별 trace 수 캡처 | A2-O1 | `observability/jaeger/sampling-1.yaml`, `docs/tracing-sampling.md` |
+| 7.6 | ✅ **병목 분석 리포트 측정 템플릿** (P50/P95/P99 + hotspot 식별 + 가설 3 + 개선안 3 + before/after 표) / 🟡 사용자 실측값 채우기 + Grafana/Jaeger 캡처 | A2-O3 | `docs/analysis/bottleneck-report.md` [★] |
 
 ## EPIC 8 — 네트워크 & 복원력 (Day 4 오후)
 

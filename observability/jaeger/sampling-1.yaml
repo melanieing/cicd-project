@@ -1,0 +1,41 @@
+# observability/jaeger/sampling-1.yaml
+#
+# 운영용 1% 샘플링 — Task 7.5 의 시연 마지막 단계에서 적용.
+#
+# 본 매니페스트는 istio-tracing.yaml 의 100% 를 1% 로 낮춘 변형.
+# 시연 흐름:
+#   1. istio-tracing.yaml (100%) apply → 모든 요청 trace → P99 hotspot 분석 (Task 7.6)
+#   2. 본 sampling-1.yaml apply → 1% 만 trace → 운영 부담 ↓ 시연
+#
+# 1% 선택의 근거 (운영 일반 가이드라인)
+#   - 100% : 디버깅 / 비정상 트래픽 추적. trace 데이터 부담 큼
+#   -  10% : 신규 서비스 안정화 기간
+#   -   1% : 일반 운영 — trace 데이터 부담과 sampling bias 의 균형
+#   - 0.1% : 매우 고부하 (초당 수만 요청) 시스템
+#   - 단, 에러 응답 (5xx) 은 별도로 100% 샘플링하는 패턴이 일반적 (head-based + tail-based 혼합)
+#
+# 본 프로젝트의 데모 부하는 시간당 수백 요청 수준이라 1% 는 trace 가 거의 안 보일 수 있다.
+# 그래도 "운영 환경에서는 이렇게 조이는 게 정석" 의 시연 가치.
+# 실제 운영에서는 RED metrics + alert 가 1% trace 의 빈약함을 보완 (메트릭 → 이상 감지 → 그 시점 trace 확대).
+
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: default
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "7"
+spec:
+  tracing:
+    - providers:
+        - name: jaeger
+      # ★ 1% 샘플링 — 운영용
+      randomSamplingPercentage: 1.0
+      customTags:
+        cluster_name:
+          literal:
+            value: "kind-payment"
+        env:
+          literal:
+            value: "dev"

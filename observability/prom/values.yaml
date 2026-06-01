@@ -1,0 +1,162 @@
+# observability/prom/values.yaml
+#
+# kube-prometheus-stack 의 override values (EPIC 7 Task 7.1).
+#
+# kube-prometheus-stack 의 구성
+#   하나의 umbrella chart 가 다음을 동시에 설치:
+#     - Prometheus Operator (CRD: Prometheus, ServiceMonitor, PodMonitor, AlertmanagerConfig...)
+#     - Prometheus Server (기본 replicas=1)
+#     - Alertmanager (replicas=1)
+#     - Grafana (built-in)
+#     - kube-state-metrics (cluster 객체의 메트릭 → exporter)
+#     - node-exporter DaemonSet (각 노드의 OS 메트릭)
+#     - 기본 Prometheus rules + Grafana dashboards (Kubernetes 표준)
+#
+# 본 프로젝트의 메모리 정책 (16GB 호스트)
+#   default 설치는 약 1.5 GiB 사용. 본 override 가 다음으로 축소:
+#     - Prometheus: retention 5 일 (default 10d) → disk 부담 ↓
+#     - Alertmanager: 활성 (EPIC 7.6 의 alert rule 시연용)
+#     - node-exporter: kind 의 단일 노드라 1 replica 충분
+#     - Grafana: 활성 (Task 7.2 의 dashboard host)
+#
+# Helm chart 출처
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm repo update
+#   helm search repo prometheus-community/kube-prometheus-stack
+#
+# 본 values 의 적용
+#   helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
+#     --version 86.0.0 \
+#     --namespace observability --create-namespace \
+#     -f observability/prom/values.yaml \
+#     --wait --timeout 10m
+
+# ============================================================
+# 글로벌 — 모든 컴포넌트 공통
+# ============================================================
+fullnameOverride: prometheus
+
+# ============================================================
+# Prometheus Server
+# ============================================================
+prometheus:
+  prometheusSpec:
+    # 메트릭 보존 — 시연용이라 5 일이면 충분 (default 10d → 디스크 ~ 2 GiB)
+    retention: 5d
+    retentionSize: "5GB"
+
+    # ServiceMonitor / PodMonitor 자동 발견 — istio-system 의 자체 ServiceMonitor 도 자동 수집
+    # default 는 release namespace 만 보지만 false 로 풀어주면 cluster 전역 모니터링 가능
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
+    # kind 의 단일 노드라 replicas 1 충분 (운영은 2 이상 + HA)
+    replicas: 1
+
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1
+        memory: 1Gi
+
+    # PVC 로 메트릭 영구 보존 (pod 재시작 시 데이터 살아남음)
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+          # kind 의 default storageClass (standard) — local-path-provisioner
+          # storageClassName: standard  # 명시 안 하면 cluster default 사용
+
+# ============================================================
+# Alertmanager — alert rule 라우팅 (이메일/Slack/PagerDuty 등)
+# ============================================================
+# EPIC 7 시연용으로는 활성만 해두고 receiver 설정은 안 함.
+# 실제 알림 통합은 EPIC 9 의 후속 또는 별도 task.
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+# ============================================================
+# Grafana — 시각화 (Task 7.2 의 Envoy dashboard host)
+# ============================================================
+grafana:
+  enabled: true
+  # 데모용 admin 비밀번호 — 운영은 Secret 으로 분리 + Vault/SOPS 관리
+  # port-forward 로만 접근하는 환경이라 hardcode 허용. 외부 노출 시점에 반드시 변경.
+  adminPassword: "admin"
+
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  # ----------------------------------------------------------
+  # Sidecar dashboard discovery
+  # grafana sidecar 가 cluster 전체의 ConfigMap 을 watch 해 라벨 매칭되는 것의
+  # 내용을 dashboard 로 자동 import. 즉 Task 7.2 의 Istio dashboard JSON 을
+  # ConfigMap 으로 던지면 자동으로 grafana 에 들어감 (UI 에서 import 안 해도 됨).
+  # ----------------------------------------------------------
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard  # ConfigMap 이 이 label=1 이면 자동 import
+      labelValue: "1"
+      searchNamespace: ALL       # 모든 namespace 의 ConfigMap 검색
+      provider:
+        # 폴더 이름 — UI 의 좌측 메뉴에 이 이름으로 그룹화
+        folderAnnotation: grafana_folder
+        allowUiUpdates: true
+
+  # ----------------------------------------------------------
+  # Datasources — Prometheus 는 chart 가 자동 등록.
+  # 추후 Loki / Tempo / Jaeger 도 같은 방식으로 추가 가능.
+  # ----------------------------------------------------------
+  # additionalDataSources:
+  #   - name: Jaeger
+  #     type: jaeger
+  #     url: http://jaeger-query.observability.svc:16686
+  #
+  # Jaeger datasource 는 EPIC 7.4 진입 시 별도 ConfigMap 으로 추가 또는 helm upgrade.
+
+# ============================================================
+# node-exporter — 각 노드의 OS 메트릭 (CPU/Mem/Disk/Network)
+# ============================================================
+nodeExporter:
+  enabled: true
+  # kind 의 control-plane + worker × 2 = 3 노드. DaemonSet 이라 자동 배포.
+
+# ============================================================
+# kube-state-metrics — K8s 객체의 메트릭 (Deployment replicas, pod phase 등)
+# ============================================================
+kubeStateMetrics:
+  enabled: true
+
+# ============================================================
+# Istio 통합 메모
+# ============================================================
+# Istio 1.22+ 는 사이드카에 prometheus 메트릭 endpoint (15090 포트) 를 default 노출하며,
+# Istio install 시 함께 따라오는 ServiceMonitor (istio-system 의 'istiod' 와 사이드카) 가
+# 자동 발견된다 (위의 serviceMonitorSelectorNilUsesHelmValues: false 덕분).
+# 추가 수동 ServiceMonitor 작성 불필요.
+#
+# 검증:
+#   kubectl -n observability port-forward svc/prometheus-kube-prometheus-prometheus 9090:9090
+#   브라우저 → http://localhost:9090/targets → istio-* job 들이 UP 상태인지 확인

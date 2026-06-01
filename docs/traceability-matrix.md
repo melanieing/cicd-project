@@ -58,12 +58,12 @@
 
 | R-ID | 분류 | 요약 | Backlog Task | 산출물 경로 | 상태 |
 |---|---|---|---|---|---|
-| A2-M1 | [필] | Kiali 토폴로지 | 1.3, 7.3 | `observability/kiali/` + 토폴로지 캡처 | ⬜ |
-| A2-M2 | [필] | Envoy Prometheus + Grafana | 7.1, 7.2 | `observability/prom/`, `grafana-dashboards/` | ⬜ |
+| A2-M1 | [필] | Kiali 토폴로지 | 1.3, 7.3 | `observability/kiali/{values.yaml,install.md}`, `observability/prom/install.md` § 4 (URL cutover). 사용자 cutover + Graph 캡처 (TBD) | 🟡 |
+| A2-M2 | [필] | Envoy Prometheus + Grafana | 7.1, 7.2 | `observability/prom/{values.yaml,install.md}`, `observability/grafana-dashboards/README.md`. 사용자 적용 + dashboard 캡처 3 장 (TBD) | 🟡 |
 | A2-M3 | [필] | DR connectionPool Circuit Breaker | 8.2 | `istio/destinationrule.yaml` | ⬜ |
-| A2-O1 | [선→필] | Jaeger + 샘플링 전략 (P99) | 7.4, 7.5 | `observability/jaeger/`, `docs/tracing-sampling.md` | ⬜ |
+| A2-O1 | [선→필] | Jaeger + 샘플링 전략 (P99) | 7.4, 7.5 | `observability/jaeger/{values.yaml,install.md,istio-tracing.yaml,sampling-1.yaml}`, `docs/tracing-sampling.md`. 사용자 적용 + trace waterfall 캡처 (TBD) | 🟡 |
 | A2-O2 | [선→필] | outlierDetection 5xx 5회 30s + 검증 | 8.3, 8.6 | DR + 카오스 결과 | ⬜ |
-| A2-O3 | [선→필] | 분산 트레이싱 병목 분석 + 개선안 | 7.6 | `docs/analysis/bottleneck-report.md` | ⬜ |
+| A2-O3 | [선→필] | 분산 트레이싱 병목 분석 + 개선안 | 7.6 | `docs/analysis/bottleneck-report.md` (측정 템플릿 ✅, 사용자 실측값 TBD) | 🟡 |
 
 ### A3. 네트워크 정책 / 장애 복구
 
