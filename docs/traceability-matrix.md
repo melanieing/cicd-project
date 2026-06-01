@@ -12,7 +12,7 @@
 
 | R-ID | 분류 | 요약 | Backlog Task | 산출물 경로 | 상태 |
 |---|---|---|---|---|---|
-| B1-M1 | [필] | Jenkins vs GHA ADR | 9.1 | `docs/adr/0001-ci-tool-jenkins-vs-gha.md` | ⬜ |
+| B1-M1 | [필] | Jenkins vs GHA ADR | 9.1 | `docs/adr/0001-ci-tool-jenkins-vs-gha.md` | ✅ |
 | B1-M2 | [필] | GHA pipeline (test→build→push→deploy) + path filter | 1.5, 3.0, 3.1, 3.3 | `services/*/tests/`, `.github/workflows/ci.yml` | ⬜ |
 | B1-M3 | [필] | Slack `#deploy-status` 알림 | 3.6 | `.github/workflows/ci.yml` | ⬜ |
 | B1-O1 | [선→필] | 4서비스 병렬 + 시간 측정 | 3.2 | `docs/metrics/ci-parallelization.md` | ⬜ |
@@ -23,7 +23,7 @@
 | R-ID | 분류 | 요약 | Backlog Task | 산출물 경로 | 상태 |
 |---|---|---|---|---|---|
 | B2-M1 | [필] | 멀티스테이지 + 비루트 UID 1001 | 2.1 | `services/*/Dockerfile` | ⬜ |
-| B2-M2 | [필] | 레지스트리 분리 + git-sha 태그 (GHCR 치환) | 2.3, 3.3, 9.2 | `docs/registry.md`, `docs/adr/0002-*.md` | ⬜ |
+| B2-M2 | [필] | 레지스트리 분리 + git-sha 태그 (GHCR 치환) | 2.3, 3.3, 9.2 | `docs/registry.md`, `docs/adr/0002-registry-ktcloud-vs-ghcr.md` | ✅ |
 | B2-M3 | [필] | Trivy HIGH/CRITICAL 차단 | 3.4 | `.github/workflows/ci.yml` | ⬜ |
 | B2-O1 | [선→필] | Trivy PR 코멘트 | 3.5 | 워크플로 + PR 캡처 | ⬜ |
 | B2-O2 | [선→필] | untagged 자동 삭제 | 2.4 | `docs/registry.md` + 캡처 | ⬜ |
@@ -71,9 +71,9 @@
 |---|---|---|---|---|---|
 | A3-M1 | [필] | NetworkPolicy 기본 | 8.1 | `manifests/networkpolicy.yaml` (16 정책, 2 ns × 8 종). 사용자 Calico 마이그레이션 + 차단 시나리오 검증 (TBD) | 🟡 |
 | A3-M2 | [필] | Pod kill + Retry 확인 | 8.4 | `scripts/chaos/pod-kill.sh`. 사용자 실행 + 로그 캡처 (TBD) | 🟡 |
-| A3-M3 | [필] | 롤백 Runbook | 9.3 | `docs/runbook/rollback.md` | ⬜ |
+| A3-M3 | [필] | 롤백 Runbook | 9.3 | `docs/runbook/rollback.md` (의사결정 트리 + 4 strategy 절차 + postmortem) | ✅ |
 | A3-O1 | [선→필] | 추가 카오스 2종+ (지연/다운) | 8.5, 8.6 | `scripts/chaos/{delay,abort}.sh`, `istio/resilience/{fault-delay,fault-abort}.yaml`. 사용자 측정 (TBD) | 🟡 |
-| A3-O2 | [선→필] | 자동 롤백 5분 이내 | 9.4 | `scripts/rollback.sh`, `docs/metrics/rollback-time.md` | ⬜ |
+| A3-O2 | [선→필] | 자동 롤백 5분 이내 | 9.4 | `scripts/rollback.sh` (4 strategy 통합), `docs/metrics/rollback-time.md` (측정 템플릿). 사용자 16 칸 실측 (TBD) | 🟡 |
 | A3-O3 | [선→필] | NetworkPolicy 세분화 | 8.7 | `docs/netpol-tests.md` (9 시나리오 매트릭스 + Calico 마이그레이션 절차). 사용자 표 9 행 채움 (TBD) | 🟡 |
 
 ---

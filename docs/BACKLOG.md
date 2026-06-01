@@ -113,10 +113,10 @@
 
 | ID | 태스크 | R-ID | 산출물 |
 |---|---|---|---|
-| 9.1 | **ADR 0001: Jenkins vs GitHub Actions** | B1-M1 | `docs/adr/0001-ci-tool-jenkins-vs-gha.md` |
-| 9.2 | **ADR 0002: KT Cloud Registry vs GHCR** (비용 제약 + 마이그 시나리오) | B2-M2 | `docs/adr/0002-registry-ktcloud-vs-ghcr.md` |
-| 9.3 | Rollback Runbook (ArgoCD revision / VS weight 즉시 전환) | A3-M3 | `docs/runbook/rollback.md` |
-| 9.4 | 자동 롤백 스크립트 (5분 이내 복구) + 실측 시간 표 | A3-O2 | `scripts/rollback.sh` + `docs/metrics/rollback-time.md` |
+| 9.1 | ✅ **ADR 0001: Jenkins vs GitHub Actions** — hosting 비용 + GHA marketplace + 매트릭스 표현력 + 채용 노출도 기준 + verification 산출물 매핑 | B1-M1 | `docs/adr/0001-ci-tool-jenkins-vs-gha.md` |
+| 9.2 | ✅ **ADR 0002: KT Cloud Registry vs GHCR** — GHCR 1차 채택 + KT Cloud 마이그레이션 절차 5 단계 (chart values 1 줄 변경으로 endpoint 추상화) | B2-M2 | `docs/adr/0002-registry-ktcloud-vs-ghcr.md` |
+| 9.3 | ✅ Rollback Runbook — 의사결정 트리 + 영향 식별 / 원인 추정 / 4 가지 strategy (canary/blue-green/argocd/k8s) 별 절차 + postmortem 가이드 | A3-M3 | `docs/runbook/rollback.md` |
+| 9.4 | ✅ 통합 자동 롤백 스크립트 (4 strategy 단일 명령) + 실측 측정 템플릿 / 🟡 사용자 3 회 × 4 strategy 측정 → 표 16 칸 실측값 채움 | A3-O2 | `scripts/rollback.sh`, `docs/metrics/rollback-time.md` |
 | 9.5 | README 작성 (Quickstart, 아키텍처 Mermaid, 결과 수치, 스크린샷 임베드) | - | `README.md` [★] |
 | 9.6 | 데모 GIF 1개 (ArgoCD Sync → Canary → Kiali) | - | `docs/demo.gif` [★] |
 | 9.7 | 최종 검증 — clean clone에서 `bootstrap.sh` 1회로 전체 기동 확인 | - | 검증 로그 [★] |
