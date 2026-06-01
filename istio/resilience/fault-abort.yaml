@@ -1,0 +1,49 @@
+# istio/resilience/fault-abort.yaml
+#
+# Istio fault injection — notification 호출의 절반을 503 으로 강제 abort (EPIC 8 Task 8.6).
+#
+# 본 매니페스트의 시연 가치
+#   1. transfer 가 notification 호출 시 503 응답을 받는 시나리오 (50% 확률)
+#   2. transfer 의 graceful-degrade 동작 확인 (notification 실패해도 transfer 응답 자체는 OK)
+#   3. notification 의 outlierDetection 발동 — 5xx 가 5 회 연속이면 그 pod 가 30 초간 격리
+#      (istio/resilience/destinationrules.yaml 의 notification DR 정책)
+#   4. 격리 후에는 healthy pod 만 트래픽 받으므로 5xx 율이 잠시 0 으로 떨어졌다가
+#      30 초 후 ejection 해제로 다시 50% 로 복귀
+#
+# 측정 / 시연
+#   ./scripts/chaos/abort.sh
+#
+# 왜 notification 인가
+#   - transfer 가 호출하는 downstream 이라 outlierDetection 발동 chain 이 자연스러움
+#   - notification 은 다른 시연 (canary/blue-green) 매니페스트 없어 충돌 없음
+#
+# 정리
+#   `kubectl delete -f istio/resilience/fault-abort.yaml`
+#   scripts/chaos/abort.sh 가 자동 cleanup 함
+
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: notification-fault-abort
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+    chaos: fault-abort
+spec:
+  hosts:
+    - notification.payment-dev.svc.cluster.local
+  http:
+    - name: fault-injection
+      fault:
+        abort:
+          # 50% 의 요청만 503 으로 abort. 100% 면 outlierDetection 이 모든 endpoint 를 즉시 ejection
+          # 해서 트래픽이 가는 곳이 없어지므로 시연 의미가 사라짐 (= 그냥 다운).
+          # 50% 면 healthy 응답이 흘러 ejection 후에도 새 endpoint 가 정상 동작 확인 가능.
+          percentage:
+            value: 50.0
+          # HTTP 503 — outlierDetection 의 consecutive5xxErrors 가 감지하는 정확한 코드.
+          httpStatus: 503
+      route:
+        - destination:
+            host: notification.payment-dev.svc.cluster.local

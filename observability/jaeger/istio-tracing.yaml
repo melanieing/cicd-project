@@ -1,0 +1,48 @@
+# observability/jaeger/istio-tracing.yaml
+#
+# Istio 가 사이드카에서 생성하는 trace span 을 Jaeger v2 의 OTLP endpoint 로 보내도록 설정.
+#
+# 본 매니페스트는 두 가지 객체를 만든다:
+#   1. MeshConfig (의 일부) — extensionProviders 에 'jaeger' 라는 이름으로 OTLP endpoint 등록
+#      (이 부분은 istioctl install 시 직접 set 으로 넘기거나 IstioOperator 수정 필요 — 본 파일은
+#       그 절차의 reference. 실제 적용은 install.md 참조)
+#   2. Telemetry CRD — namespace 의 워크로드가 'jaeger' provider 로 trace 를 보내도록 활성화
+#
+# Telemetry API 가 핵심
+#   옛 Istio 는 MeshConfig.defaultConfig.tracing 으로 전역 trace 설정만 가능했음.
+#   1.19+ 부터 Telemetry CRD 로 namespace / workload 단위 fine-grained 설정 가능.
+#   본 프로젝트는 payment-dev namespace 에 100% 샘플링 (시연용) 으로 시작 → § 7.5 에서 1% 로 조정.
+
+# ---------------------------------------------------------------------------
+# Telemetry — payment-dev namespace 의 모든 워크로드에 적용
+# ---------------------------------------------------------------------------
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: default
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "7"
+spec:
+  # selector 가 비어있으면 namespace 의 모든 워크로드에 적용 (mTLS 정책과 같은 패턴)
+  tracing:
+    # providers 의 name 은 MeshConfig.extensionProviders 에 등록된 이름과 일치해야 함.
+    # 'jaeger' 라는 이름은 본 프로젝트의 install.md § 2 절차에서 등록.
+    - providers:
+        - name: jaeger
+      # ★ 100% 샘플링 — Task 7.5 의 시연 초반. 모든 요청을 trace 로 수집.
+      #    P99 hotspot 분석에 좋지만 trace 데이터가 빠르게 쌓여 보관 비용 ↑.
+      #    Task 7.5 의 후반에서 1.0 → 100.0 / 100 = 1.0 (= 1%) 으로 낮춤.
+      randomSamplingPercentage: 100.0
+
+      # custom tags — trace span 에 추가 metadata 부여 (디버깅용)
+      customTags:
+        # 어느 cluster 에서 발생한 trace 인지 (multi-cluster 대비 미리 박아둠)
+        cluster_name:
+          literal:
+            value: "kind-payment"
+        # 어느 환경인지 (dev / prod 구분)
+        env:
+          literal:
+            value: "dev"
