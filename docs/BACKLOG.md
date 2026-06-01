@@ -101,13 +101,13 @@
 
 | ID | 태스크 | R-ID | 산출물 |
 |---|---|---|---|
-| 8.1 | NetworkPolicy 기본 (namespace 내부만 허용, 외부 차단) | A3-M1 | `manifests/networkpolicy.yaml` |
-| 8.2 | DestinationRule connectionPool (Circuit Breaker 기본) | A2-M3 | `istio/destinationrule.yaml` |
-| 8.3 | outlierDetection (5xx 5회 → 30s ejection) + ejection 발동 그래프 | A2-O2 | 동일 파일, Grafana 스크린샷 |
-| 8.4 | 카오스 #1 — Pod 강제 종료 + Istio Retry 동작 확인 | A3-M2 | `scripts/chaos/pod-kill.sh` + 결과 로그 |
-| 8.5 | 카오스 #2 — Istio fault injection 200ms delay | A3-O1 | `scripts/chaos/delay.sh` |
-| 8.6 | 카오스 #3 — 503 강제 주입 → outlierDetection 검증 | A3-O1, A2-O2 | `scripts/chaos/abort.sh` |
-| 8.7 | NetworkPolicy 차단/허용 매트릭스 시나리오 | A3-O3 | `docs/netpol-tests.md` |
+| 8.1 | ✅ payment-dev/payment-prod 의 default-deny + 7 종 화이트리스트 정책 (intra-ns, istio-system, observability ingress/egress, DNS, kube-apiserver) 총 16 개 NetworkPolicy / 🟡 Calico CNI 마이그레이션 (kindnet 미지원) + 사용자 § 3 차단 시나리오 검증 | A3-M1 | `manifests/networkpolicy.yaml` |
+| 8.2 | ✅ 4 서비스 (transfer/account/loan/notification) 의 DR 에 connectionPool 정책 추가 — transfer/account 는 기존 DR augment, loan/notification 은 새 DR. postgres 는 의도적 제외 (StatefulSet + asyncpg 자체 pool 충돌 회피) | A2-M3 | `istio/canary/destinationrule.yaml` (augmented), `istio/blue-green/destinationrule.yaml` (augmented), `istio/resilience/destinationrules.yaml` (new for loan + notification) |
+| 8.3 | ✅ outlierDetection (interval 30s, consecutive5xxErrors 5, baseEjectionTime 30s, maxEjectionPercent 50, minHealthPercent 50) — 8.2 와 같은 DR 들에 trafficPolicy.outlierDetection 으로 함께 정의 / 🟡 사용자 8.6 시연 후 Grafana 의 outlier_ejections_total 증가 그래프 캡처 | A2-O2 | 위와 동일 |
+| 8.4 | ✅ Pod kill 후 Istio retry 효과 측정 스크립트 — notification pod 강제 종료 + transfer 응답 분포 집계 + 새 pod ready 시간 측정 / 🟡 사용자 실행 후 결과 캡처 | A3-M2 | `scripts/chaos/pod-kill.sh` |
+| 8.5 | ✅ fault.delay 200ms 시연 — loan 에 임시 VS 적용 + before/after P50/P95/P99 측정 + 자동 cleanup (trap) | A3-O1 | `scripts/chaos/delay.sh`, `istio/resilience/fault-delay.yaml` |
+| 8.6 | ✅ fault.abort 503 50% 시연 — notification 에 임시 VS 적용 + 90s 부하 시계열 집계 + outlierDetection 발동 가시화 + 자동 cleanup | A3-O1, A2-O2 | `scripts/chaos/abort.sh`, `istio/resilience/fault-abort.yaml` |
+| 8.7 | ✅ 9 시나리오 매트릭스 (허용 7 + 차단 2) + 검증 명령 + Calico 마이그레이션 절차 + 흔한 함정 표 / 🟡 사용자 9 행 결과 채움 + 캡처 | A3-O3 | `docs/netpol-tests.md` |
 
 ## EPIC 9 — 문서·롤백·마감 (Day 1~4 분산, Day 4 마감)
 

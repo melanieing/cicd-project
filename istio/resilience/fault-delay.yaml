@@ -1,0 +1,53 @@
+# istio/resilience/fault-delay.yaml
+#
+# Istio fault injection — loan 서비스에 200ms 인공 지연 (EPIC 8 Task 8.5).
+#
+# 본 매니페스트는 시연용 임시 VirtualService 다.
+#   - 적용 → 모든 loan 호출에 200ms 추가 지연 → P99 latency 가 측정 가능하게 점프
+#   - 시연 종료 후 `kubectl delete -f istio/resilience/fault-delay.yaml` 로 정리
+#
+# 왜 loan 인가
+#   - transfer 는 canary VirtualService 가 weight 라우팅 중이라 같은 VS 에 fault 를 추가하면 충돌
+#   - account 는 blue-green VS 가 100/0 라우팅 중 (같은 이유로 충돌)
+#   - notification 은 8.6 의 fault-abort 시연 대상
+#   - loan 만 별다른 VS 가 없어 본 시연에 자유로움
+#
+# 측정 절차
+#   1. (적용 전) baseline P99 측정:
+#        kubectl -n payment-dev exec deploy/transfer -c transfer -- \
+#          sh -c 'for i in $(seq 1 50); do
+#            curl -s -o /dev/null -w "%{time_total}\n" http://loan:8000/health/ready
+#          done | sort -n | tail -5'
+#   2. 본 매니페스트 apply
+#   3. (적용 후) 같은 명령 → time_total 이 baseline + 0.2s 정도 증가해야 함
+#   4. Grafana 의 Service dashboard 에서 loan 의 P99 가 그래프상 200ms+ 점프 확인
+#   5. 시연 종료: kubectl delete -f istio/resilience/fault-delay.yaml
+#
+# 주의
+#   본 VS 는 loan 의 mesh-internal 호출만 가로챈다. 호스트 머신에서 직접 curl 한 결과는
+#   사이드카를 안 거치므로 fault 가 적용 안 됨. 반드시 mesh 안의 pod 에서 호출.
+
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: loan-fault-delay
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+    chaos: fault-delay
+spec:
+  hosts:
+    - loan.payment-dev.svc.cluster.local
+  http:
+    - name: fault-injection
+      fault:
+        delay:
+          # 100% 의 요청에 지연 주입. 일부만 주입하려면 percentage.value 를 50.0 같이.
+          percentage:
+            value: 100.0
+          # 정확히 200ms 의 fixed delay. exponential / lognormal 분포도 가능 (옛 옵션).
+          fixedDelay: 200ms
+      route:
+        - destination:
+            host: loan.payment-dev.svc.cluster.local

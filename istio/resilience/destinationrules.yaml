@@ -1,0 +1,71 @@
+# istio/resilience/destinationrules.yaml
+#
+# loan / notification 서비스의 DestinationRule (EPIC 8 Task 8.2 + 8.3).
+#
+# 두 서비스는 Canary / Blue-Green 패턴을 안 쓰므로 subset 정의 없음.
+# trafficPolicy 만 정의해서 Circuit Breaker + outlierDetection 적용.
+#
+# transfer (canary) 와 account (blue-green) 의 DR 은 각자 디렉토리 (istio/canary/, istio/blue-green/)
+# 에 이미 존재하며 같은 trafficPolicy 정책을 들고 있음. 4 서비스의 정책 값이 동일하게 유지되어야
+# 운영 일관성 확보 — 한쪽 변경 시 모든 곳을 같이 갱신.
+#
+# postgres 는 의도적으로 제외
+#   - StatefulSet 이라 K8s service 의 endpoint 가 stable (이름 기반, IP rotation 없음)
+#   - 클라이언트 (4 서비스의 asyncpg) 가 자체 connection pool 을 관리하므로 Istio 의
+#     connectionPool 을 그 위에 또 얹으면 이중 pool 이 되어 디버깅 어려움
+#   - DB 5xx 는 SQL 에러로 분류되어 Istio 의 HTTP-level outlierDetection 으로 잡히지도 않음
+#
+# 적용
+#   kubectl apply -f istio/resilience/destinationrules.yaml
+
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: loan
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  host: loan.payment-dev.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        maxRequestsPerConnection: 100
+        maxRetries: 3
+    outlierDetection:
+      interval: 30s
+      consecutive5xxErrors: 5
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 50
+
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: notification
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  host: notification.payment-dev.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        maxRequestsPerConnection: 100
+        maxRetries: 3
+    outlierDetection:
+      interval: 30s
+      consecutive5xxErrors: 5
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 50

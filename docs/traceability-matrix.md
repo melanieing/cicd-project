@@ -60,21 +60,21 @@
 |---|---|---|---|---|---|
 | A2-M1 | [필] | Kiali 토폴로지 | 1.3, 7.3 | `observability/kiali/{values.yaml,install.md}`, `observability/prom/install.md` § 4 (URL cutover). 사용자 cutover + Graph 캡처 (TBD) | 🟡 |
 | A2-M2 | [필] | Envoy Prometheus + Grafana | 7.1, 7.2 | `observability/prom/{values.yaml,install.md}`, `observability/grafana-dashboards/README.md`. 사용자 적용 + dashboard 캡처 3 장 (TBD) | 🟡 |
-| A2-M3 | [필] | DR connectionPool Circuit Breaker | 8.2 | `istio/destinationrule.yaml` | ⬜ |
+| A2-M3 | [필] | DR connectionPool Circuit Breaker | 8.2 | `istio/canary/destinationrule.yaml` + `istio/blue-green/destinationrule.yaml` (augmented) + `istio/resilience/destinationrules.yaml` (loan + notification) | ✅ |
 | A2-O1 | [선→필] | Jaeger + 샘플링 전략 (P99) | 7.4, 7.5 | `observability/jaeger/{values.yaml,install.md,istio-tracing.yaml,sampling-1.yaml}`, `docs/tracing-sampling.md`. 사용자 적용 + trace waterfall 캡처 (TBD) | 🟡 |
-| A2-O2 | [선→필] | outlierDetection 5xx 5회 30s + 검증 | 8.3, 8.6 | DR + 카오스 결과 | ⬜ |
+| A2-O2 | [선→필] | outlierDetection 5xx 5회 30s + 검증 | 8.3, 8.6 | DR trafficPolicy.outlierDetection (4 서비스), `scripts/chaos/abort.sh`, `istio/resilience/fault-abort.yaml`. 사용자 시연 + Grafana outlier 그래프 캡처 (TBD) | 🟡 |
 | A2-O3 | [선→필] | 분산 트레이싱 병목 분석 + 개선안 | 7.6 | `docs/analysis/bottleneck-report.md` (측정 템플릿 ✅, 사용자 실측값 TBD) | 🟡 |
 
 ### A3. 네트워크 정책 / 장애 복구
 
 | R-ID | 분류 | 요약 | Backlog Task | 산출물 경로 | 상태 |
 |---|---|---|---|---|---|
-| A3-M1 | [필] | NetworkPolicy 기본 | 8.1 | `manifests/networkpolicy.yaml` | ⬜ |
-| A3-M2 | [필] | Pod kill + Retry 확인 | 8.4 | `scripts/chaos/pod-kill.sh` + 로그 | ⬜ |
+| A3-M1 | [필] | NetworkPolicy 기본 | 8.1 | `manifests/networkpolicy.yaml` (16 정책, 2 ns × 8 종). 사용자 Calico 마이그레이션 + 차단 시나리오 검증 (TBD) | 🟡 |
+| A3-M2 | [필] | Pod kill + Retry 확인 | 8.4 | `scripts/chaos/pod-kill.sh`. 사용자 실행 + 로그 캡처 (TBD) | 🟡 |
 | A3-M3 | [필] | 롤백 Runbook | 9.3 | `docs/runbook/rollback.md` | ⬜ |
-| A3-O1 | [선→필] | 추가 카오스 2종+ (지연/다운) | 8.5, 8.6 | `scripts/chaos/*.sh` + 측정 | ⬜ |
+| A3-O1 | [선→필] | 추가 카오스 2종+ (지연/다운) | 8.5, 8.6 | `scripts/chaos/{delay,abort}.sh`, `istio/resilience/{fault-delay,fault-abort}.yaml`. 사용자 측정 (TBD) | 🟡 |
 | A3-O2 | [선→필] | 자동 롤백 5분 이내 | 9.4 | `scripts/rollback.sh`, `docs/metrics/rollback-time.md` | ⬜ |
-| A3-O3 | [선→필] | NetworkPolicy 세분화 | 8.7 | `docs/netpol-tests.md` | ⬜ |
+| A3-O3 | [선→필] | NetworkPolicy 세분화 | 8.7 | `docs/netpol-tests.md` (9 시나리오 매트릭스 + Calico 마이그레이션 절차). 사용자 표 9 행 채움 (TBD) | 🟡 |
 
 ---
 

@@ -37,6 +37,46 @@ spec:
   host: transfer.payment-dev.svc.cluster.local
 
   # ---------------------------------------------------------------------------
+  # trafficPolicy — 모든 subset 에 공통 적용되는 회로 차단 / 격리 정책
+  # (EPIC 8 Task 8.2 + 8.3 — R-A2-M3, R-A2-O2)
+  # ---------------------------------------------------------------------------
+  # Istio 는 trafficPolicy 를 subset 안에도 둘 수 있고 spec 최상단에 두면 모든 subset 공통 적용.
+  # 본 시연은 stable / canary 공통 정책이라 최상단 배치.
+  trafficPolicy:
+    # connectionPool — Circuit Breaker 의 1 차 방어 (자원 고갈 방지)
+    connectionPool:
+      tcp:
+        # 한 destination IP 당 최대 동시 TCP 연결 수. 100 = 데모 부하 대비 넉넉.
+        # 운영에서는 destination capacity * 1.2 정도가 일반 가이드.
+        maxConnections: 100
+      http:
+        # 한 connection 당 처리할 수 있는 HTTP/1.1 요청 수. 이 값을 넘으면 새 connection.
+        # HTTP/2 의 stream 한계와 분리된 개념.
+        http1MaxPendingRequests: 50
+        # connection 당 최대 처리할 요청 수. 0 = 무제한 (default).
+        # 너무 작으면 connection rebuild 가 잦아져 latency ↑, 너무 크면 TCP keep-alive 가 stale.
+        maxRequestsPerConnection: 100
+        # 한 connection 의 최대 stream 수 (HTTP/2). default 2^31-1 (사실상 무제한).
+        # mesh 내부는 사이드카가 HTTP/2 를 자동 upgrade.
+        maxRetries: 3
+    # outlierDetection — 비정상 endpoint 의 자동 격리 (= "passive health check")
+    # 5xx 응답이 연속으로 발생하는 endpoint 를 일정 시간 load balancing pool 에서 제외.
+    # Task 8.6 (fault.abort 503) 시연에서 본 정책이 실제 발동.
+    outlierDetection:
+      # 평가 윈도우 = 30 초. 이 윈도우 안의 응답 통계로 ejection 판단.
+      interval: 30s
+      # 5xx 가 5 회 연속 발생하면 ejection.
+      # consecutive5xxErrors 가 새 이름 (옛 이름 consecutiveErrors 는 deprecated).
+      consecutive5xxErrors: 5
+      # 한 번 ejection 되면 base interval 동안 격리. 동일 endpoint 가 또 5xx 내면 시간 ↑ (지수 backoff).
+      baseEjectionTime: 30s
+      # ejection 가능한 endpoint 의 최대 비율. 100% 면 전체 격리도 허용 (전체 다운 시 graceful fail).
+      # 보통 50% 이하로 두어 "최악의 경우라도 절반은 남긴다" 가 운영 정석.
+      maxEjectionPercent: 50
+      # 최소 호스트 수 — endpoint 가 2 개 미만이면 ejection 안 함 (single point of failure 방지).
+      minHealthPercent: 50
+
+  # ---------------------------------------------------------------------------
   # subsets — 같은 Service 의 endpoint 들을 라벨로 분류
   # ---------------------------------------------------------------------------
   # 각 subset 의 `name` 이 VirtualService 의 `route.destination.subset` 가 가리키는 키가 된다.

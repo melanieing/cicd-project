@@ -1,0 +1,403 @@
+# manifests/networkpolicy.yaml
+#
+# payment-dev / payment-prod 네임스페이스의 통신을 화이트리스트 방식으로 통제하는
+# NetworkPolicy 묶음 (EPIC 8 Task 8.1, R-A3-M1).
+#
+# 본 매니페스트는 다음 사고 시나리오를 막는다:
+#   - 외부 cluster 의 임의 pod 가 payment-dev 의 서비스를 직접 호출
+#   - 사이드카가 없는 pod (= mTLS 강제 우회) 가 payment-dev 의 endpoint 에 접근
+#   - 사고 시 마이크로서비스가 임의의 외부 IP 로 데이터 유출 시도
+#
+# 동시에 다음은 의도적으로 허용해야 한다 (안 그러면 cluster 가 망가짐):
+#   1. payment-dev 내부 pod 간 통신 (transfer ↔ notification, * → postgres)
+#   2. istio-system → payment-dev (사이드카 xDS / SDS / mTLS handshake, ingress gateway → 서비스)
+#   3. observability → payment-dev (Prometheus 가 사이드카의 :15090 메트릭 scrape)
+#   4. kubelet (node IP) → payment-dev pod (readiness/liveness probe) — podSelector 로 잡히지 않으므로 `from: []` 빈 from 대신 별도 ingress 규칙 불필요. CNI 가 host 트래픽은 NetworkPolicy 검사 우회.
+#   5. payment-dev → kube-system (CoreDNS, DNS 53/UDP+TCP)
+#   6. payment-dev → istio-system (사이드카 ↔ istiod xDS 15012, SDS 15012, telemetry)
+#   7. payment-dev → observability (Jaeger OTLP 4317 — Telemetry API 가 trace 전송)
+#   8. payment-dev → kube-apiserver (사이드카가 K8s API 조회) — 사실상 모든 namespace 의 egress
+#
+# 디자인 결정
+#   - **default-deny 를 namespace 별로 1 개** 두고 그 위에 allow 규칙들을 쌓는 방식.
+#     (반대 방식인 "모든 트래픽 허용 + 특정 거부" 는 K8s NetworkPolicy 가 지원 안 함)
+#   - **policyTypes: [Ingress, Egress]** 양방향 모두 통제. ingress 만 통제하고 egress 풀면
+#     서비스가 외부로 임의 데이터 유출 가능.
+#   - **namespaceSelector + podSelector 조합** 으로 "어느 ns 의 어느 pod 만" 정밀하게 허용.
+#
+# CNI 의존성
+#   본 매니페스트가 동작하려면 cluster 의 CNI 가 NetworkPolicy 를 지원해야 함.
+#   kind 의 default CNI (kindnet) 는 NetworkPolicy 를 **지원 안 함** → 본 매니페스트가 무시됨.
+#   해결책 두 가지:
+#     (a) kind 클러스터를 Calico CNI 로 재생성 (kind-config.yaml 에 disableDefaultCNI: true + calico apply)
+#     (b) Cilium CNI 사용 (eBPF 기반, NetworkPolicy + L7 policy 추가 지원)
+#   본 프로젝트는 (a) 가 가장 간단하고 표준이라 install.md 절차에 명시.
+#
+# 적용 명령
+#   kubectl apply -f manifests/networkpolicy.yaml
+#
+# 검증 절차는 docs/netpol-tests.md (Task 8.7) 참조.
+
+# ===========================================================================
+# 1. payment-dev — default deny (Ingress + Egress 양방향)
+# ===========================================================================
+# 본 규칙 단독 적용 시: payment-dev 의 모든 pod 가 어떤 통신도 못 함 → 서비스 다운.
+# 아래의 allow 규칙들과 함께 작동해서 화이트리스트 효과를 낸다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  # 빈 podSelector 는 namespace 의 모든 pod 매칭
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  # ingress / egress 필드 자체가 없으면 = "아무것도 허용 안 함" → default deny.
+
+---
+# ===========================================================================
+# 2. payment-dev — 같은 namespace 안에서의 모든 통신 허용
+# ===========================================================================
+# transfer → notification, * → postgres, 같은 pod 안 사이드카 ↔ 메인 컨테이너 등 모두 포함.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: payment-dev
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: payment-dev
+
+---
+# ===========================================================================
+# 3. payment-dev — istio-system 에서의 ingress 허용
+# ===========================================================================
+# (a) 사이드카 ↔ istiod 의 xDS / SDS (port 15012)
+# (b) Istio ingress gateway 에서 들어오는 외부 트래픽
+# (c) istioctl proxy-config 같은 디버깅 명령이 사이드카 admin port (15000) 접근
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-istio-system
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: istio-system
+
+---
+# ===========================================================================
+# 4. payment-dev — observability 에서의 ingress 허용 (Prometheus scrape)
+# ===========================================================================
+# Prometheus 가 사이드카의 :15090 (Envoy 메트릭) 과 :15020 (Pilot agent) 를 scrape.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-observability
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: observability
+
+---
+# ===========================================================================
+# 5. payment-dev → DNS (kube-system) — 53/UDP + 53/TCP
+# ===========================================================================
+# 거의 모든 서비스가 다른 서비스를 호출할 때 DNS 조회 필요 (예: transfer 가
+# notification.payment-dev.svc.cluster.local 조회). DNS 없이는 cluster 가 동작 못 함.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-dns
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# ===========================================================================
+# 6. payment-dev → istio-system (egress) — 사이드카 ↔ istiod xDS / SDS / telemetry
+# ===========================================================================
+# 사이드카는 istiod (port 15012) 에 지속 연결해서 routing config / certificates 를 받음.
+# 이 연결이 끊기면 mesh 정책이 stale 됨.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-istio-system
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: istio-system
+
+---
+# ===========================================================================
+# 7. payment-dev → observability (egress) — Jaeger OTLP trace 전송 (port 4317)
+# ===========================================================================
+# EPIC 7 의 Telemetry API 가 사이드카로 하여금 trace 를 jaeger-collector 의 4317 로 보내게 함.
+# 본 규칙이 없으면 모든 trace 가 timeout → trace 데이터 0.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-observability
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: observability
+
+---
+# ===========================================================================
+# 8. payment-dev → kube-apiserver (egress)
+# ===========================================================================
+# 사이드카의 pilot-agent 가 ServiceAccount token 검증, ConfigMap watch 등을 위해
+# kube-apiserver (443/TCP, default service IP 10.96.0.1) 접근.
+# K8s 의 API server 는 namespaceSelector 로 못 잡으므로 ipBlock 으로 명시.
+# kind 의 service CIDR 은 default 10.96.0.0/12 → 10.96.0.1/32 가 apiserver.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-kube-apiserver
+  namespace: payment-dev
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.96.0.1/32
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# ===========================================================================
+# payment-prod 도 동일 정책 묶음 (1~8 의 ns 만 payment-prod 로 교체)
+# ===========================================================================
+# DRY 위반처럼 보이지만 NetworkPolicy 는 namespace-scoped 라 하나의 매니페스트로 두 ns 를
+# 동시 통제할 수 없음. 정책 변경 시 양쪽을 같이 수정해야 하는 운영 부담은 있으나, 환경 격리가
+# 강해지는 장점이 있음 (prod 만 더 빡빡한 규칙 추가 가능).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: payment-prod
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: payment-prod
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: payment-prod
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: payment-prod
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-istio-system
+  namespace: payment-prod
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: istio-system
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-observability
+  namespace: payment-prod
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: observability
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-dns
+  namespace: payment-prod
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-istio-system
+  namespace: payment-prod
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: istio-system
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-observability
+  namespace: payment-prod
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: observability
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-kube-apiserver
+  namespace: payment-prod
+  labels:
+    app.kubernetes.io/part-of: payment-platform
+    epic: "8"
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.96.0.1/32
+      ports:
+        - protocol: TCP
+          port: 443

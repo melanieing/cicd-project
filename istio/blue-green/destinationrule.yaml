@@ -16,6 +16,27 @@ metadata:
     epic: "6"
 spec:
   host: account.payment-dev.svc.cluster.local
+
+  # ---------------------------------------------------------------------------
+  # trafficPolicy — Circuit Breaker + outlierDetection (EPIC 8 Task 8.2 + 8.3)
+  # 정책 값은 istio/canary/destinationrule.yaml 과 동일 (운영 일관성).
+  # 두 DR 의 trafficPolicy 가 의도적으로 같게 유지되어야 하므로, 한쪽 변경 시 다른 쪽도 동시 갱신.
+  # ---------------------------------------------------------------------------
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        maxRequestsPerConnection: 100
+        maxRetries: 3
+    outlierDetection:
+      interval: 30s
+      consecutive5xxErrors: 5
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 50
+
   subsets:
     # 현재 production 라이브 측. chart 의 account Deployment (version=blue 라벨).
     - name: blue
