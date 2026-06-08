@@ -33,7 +33,7 @@ pydantic>=2.13.3,<3
 pytest>=9.0.3,<10
 
 # pytest에서 async 함수(`async def test_...`)를 테스트할 때 필요한 플러그인.
-pytest-asyncio>=1.3.0,<1.4
+pytest-asyncio>=1.4.0,<1.5
 
 # 비동기 HTTP 클라이언트. fastapi의 TestClient가 내부적으로 사용.
 # 추가로 transfer → notification 같은 서비스 간 호출(Task 1.3)에도 사용 예정.
